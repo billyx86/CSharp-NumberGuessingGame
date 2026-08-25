@@ -19,7 +19,17 @@ namespace BasicGuessingGame
             while (guessedNumber == false)                                                    // The boolean variable is used to loop this while loop until the player has guessed the number.
             {
                 Console.WriteLine("Guess a number: ");
-                int.TryParse(Console.ReadLine(), out int guess);                              // Converts the string into an integer, and outputs it into the integer variable "guess".
+                string input = Console.ReadLine();                            // Read the user's input as a string.
+                if (input == null)                                            // null means the input stream has been closed (EOF).
+                {
+                    Console.WriteLine("Input closed. Goodbye!");
+                    break;                                                    // Leave the game instead of looping forever.
+                }
+                if (int.TryParse(input, out int guess) == false)              // Converts the string into the integer variable "guess". If the input is not a valid number...
+                {
+                    Console.WriteLine("Invalid number. Please enter a whole number.");   // ...tell the user and ask again, without treating the input as a guess.
+                    continue;
+                }
                 
                 if (guess == secretNumber)
                 {
