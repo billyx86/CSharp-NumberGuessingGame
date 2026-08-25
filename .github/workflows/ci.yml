@@ -13,7 +13,9 @@ jobs:
       - name: Install Mono
         run: sudo apt-get update -qq && sudo apt-get install -y mono-complete
       - name: Compile
-        run: mcs -warn:4 -out:BasicGuessingGame/bin/Guess.exe BasicGuessingGame/Program.cs
+        run: |
+          mkdir -p BasicGuessingGame/bin
+          mcs -warn:4 -out:BasicGuessingGame/bin/Guess.exe BasicGuessingGame/Program.cs
       - name: Smoke test (invalid input no longer silently treated as 0)
         run: printf 'abc\n' | mono BasicGuessingGame/bin/Guess.exe | grep -q 'Invalid number'
       - name: Smoke test (EOF exits cleanly)
