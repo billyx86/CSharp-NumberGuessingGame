@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Mono
+        run: sudo apt-get update -qq && sudo apt-get install -y mono-complete
+      - name: Compile
+        run: mcs -warn:4 -out:BasicGuessingGame/bin/Guess.exe BasicGuessingGame/Program.cs
+      - name: Smoke test (invalid input no longer silently treated as 0)
+        run: printf 'abc\n' | mono BasicGuessingGame/bin/Guess.exe | grep -q 'Invalid number'
+      - name: Smoke test (EOF exits cleanly)
+        run: printf '' | mono BasicGuessingGame/bin/Guess.exe | grep -q 'Input closed. Goodbye!'
+      - name: Smoke test (guaranteed win by guessing 0-99)
+        run: seq 0 99 | mono BasicGuessingGame/bin/Guess.exe | grep -q 'Correct! You have guessed the number.'
