@@ -20,5 +20,31 @@ jobs:
         run: printf 'abc\n' | mono BasicGuessingGame/bin/Guess.exe | grep -q 'Invalid number'
       - name: Smoke test (EOF exits cleanly)
         run: printf '' | mono BasicGuessingGame/bin/Guess.exe | grep -q 'Input closed. Goodbye!'
-      - name: Smoke test (guaranteed win by guessing 0-99)
-        run: seq 0 99 | mono BasicGuessingGame/bin/Guess.exe | grep -q 'Correct! You have guessed the number.'
+      - name: Smoke test (guaranteed win by guessing 0-99, limit raised to 200)
+        run: seq 0 99 | mono BasicGuessingGame/bin/Guess.exe 200 | grep -q 'Correct! You have guessed the number.'
+      - name: Smoke test (high out-of-range guess is rejected, not "too high")
+        run: |
+          OUT=$(printf '150\n' | mono BasicGuessingGame/bin/Guess.exe 50)
+          echo "$OUT"
+          echo "$OUT" | grep -q 'Please enter a number between 0 and 99'
+          ! echo "$OUT" | grep -q 'too high'
+      - name: Smoke test (low out-of-range guess is rejected, not "too low")
+        run: |
+          OUT=$(printf '%s\n' '-5' | mono BasicGuessingGame/bin/Guess.exe 50)
+          echo "$OUT"
+          echo "$OUT" | grep -q 'Please enter a number between 0 and 99'
+          ! echo "$OUT" | grep -q 'too low'
+      - name: Smoke test (player can lose when the guess limit is hit)
+        run: |
+          for i in $(seq 1 20); do
+            OUT=$(printf '0\n1\n2\n' | mono BasicGuessingGame/bin/Guess.exe 3)
+            if echo "$OUT" | grep -q 'ran out of guesses'; then
+              echo "Observed the loss path on attempt $i"
+              echo "$OUT" | grep -q 'The number was'
+              exit 0
+            fi
+          done
+          echo "Never observed the loss path in 20 attempts (extremely unlikely)" >&2
+          exit 1
+      - name: Smoke test (play-again prompt appears after a win)
+        run: seq 0 99 | mono BasicGuessingGame/bin/Guess.exe 200 | grep -q 'Play again? (y/n)'
