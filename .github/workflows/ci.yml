@@ -15,7 +15,13 @@ jobs:
       - name: Compile
         run: |
           mkdir -p BasicGuessingGame/bin
-          mcs -warn:4 -out:BasicGuessingGame/bin/Guess.exe BasicGuessingGame/Program.cs
+          mcs -warn:4 -out:BasicGuessingGame/bin/Guess.exe BasicGuessingGame/Program.cs BasicGuessingGame/GameEngine.cs
+      - name: Unit tests (GameEngine, deterministic via injected seed)
+        run: |
+          mkdir -p BasicGuessingGame.Tests/bin
+          mcs -warn:4 -out:BasicGuessingGame.Tests/bin/GameEngineTests.exe \
+            BasicGuessingGame.Tests/GameEngineTests.cs BasicGuessingGame/GameEngine.cs
+          mono BasicGuessingGame.Tests/bin/GameEngineTests.exe
       - name: Smoke test (invalid input no longer silently treated as 0)
         run: printf 'abc\n' | mono BasicGuessingGame/bin/Guess.exe | grep -q 'Invalid number'
       - name: Smoke test (EOF exits cleanly)
@@ -46,5 +52,28 @@ jobs:
           done
           echo "Never observed the loss path in 20 attempts (extremely unlikely)" >&2
           exit 1
+      - name: "Smoke test (seeded round is deterministic — guaranteed loss, secret 24)"
+        run: |
+          OUT=$(printf '0\n1\n2\n' | mono BasicGuessingGame/bin/Guess.exe 3 1)
+          echo "$OUT"
+          echo "$OUT" | grep -q 'ran out of guesses'
+          echo "$OUT" | grep -q 'The number was 24'
+      - name: "Smoke test (seeded round is deterministic — guaranteed win on one guess)"
+        run: |
+          OUT=$(printf '24\n' | mono BasicGuessingGame/bin/Guess.exe 10 1)
+          echo "$OUT"
+          echo "$OUT" | grep -q 'Correct! You have guessed the number.'
+      - name: Smoke test (invalid guess limit falls back to 10 and says so)
+        run: |
+          OUT=$(printf '' | mono BasicGuessingGame/bin/Guess.exe abc)
+          echo "$OUT"
+          echo "$OUT" | grep -q 'is not a valid guess limit'
+          echo "$OUT" | grep -q 'You have 10 guesses'
+      - name: Smoke test (guess limit above the cap is clamped to 100 and says so)
+        run: |
+          OUT=$(printf '' | mono BasicGuessingGame/bin/Guess.exe 999999999)
+          echo "$OUT"
+          echo "$OUT" | grep -q 'above the maximum of 100'
+          echo "$OUT" | grep -q 'You have 100 guesses'
       - name: Smoke test (play-again prompt appears after a win)
         run: seq 0 99 | mono BasicGuessingGame/bin/Guess.exe 200 | grep -q 'Play again? (y/n)'

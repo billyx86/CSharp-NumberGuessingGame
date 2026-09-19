@@ -13,9 +13,10 @@ With Mono (matching the CI workflow):
 
 ```sh
 mkdir -p BasicGuessingGame/bin
-mcs -warn:4 -out:BasicGuessingGame/bin/Guess.exe BasicGuessingGame/Program.cs
-mono BasicGuessingGame/bin/Guess.exe            # 10 guesses per round (default)
-mono BasicGuessingGame/bin/Guess.exe 15         # 15 guesses per round
+mcs -warn:4 -out:BasicGuessingGame/bin/Guess.exe BasicGuessingGame/Program.cs BasicGuessingGame/GameEngine.cs
+mono BasicGuessingGame/bin/Guess.exe              # 10 guesses per round (default)
+mono BasicGuessingGame/bin/Guess.exe 15           # 15 guesses per round
+mono BasicGuessingGame/bin/Guess.exe 15 42        # 15 guesses, deterministic (seed 42)
 ```
 
 With MSBuild (Visual Studio / `dotnet build` on Windows):
@@ -24,7 +25,29 @@ With MSBuild (Visual Studio / `dotnet build` on Windows):
 msbuild BasicGuessingGame/BasicGuessingGame.csproj /p:Configuration=Release
 ```
 
-`<maxGuesses>` (the program argument) is optional and defaults to **10**.
+The command line is `Guess.exe [maxGuesses] [seed]`. Both arguments are optional:
+
+- `<maxGuesses>` defaults to **10** and is clamped to **100** (above that the
+  0–99 range would be a guaranteed win, not a difficulty). An invalid value
+  (non-numeric, zero, or negative) is **not** silently ignored — the program
+  prints a notice and uses the default of 10 (issue #8).
+- `<seed>` (optional) makes the round deterministic for testing and
+  reproducible play: `new Random(seed)`. With no seed the number is
+  clock-seeded exactly as before (issue #7). An unparseable seed falls back to
+  a clock-seeded round with a notice.
+
+## Layout
+
+- `BasicGuessingGame/GameEngine.cs` — all game logic (issue #9): range
+  checking, guess counting, win/lose, and command-line parsing. It takes its
+  input, output, RNG, and guess limit through interfaces/constants instead of
+  touching `Console` directly, so tests can drive a full round with scripted
+  input.
+- `BasicGuessingGame/Program.cs` — thin console adapter: parses the command
+  line, creates the (single) `Random` once per session, and runs the
+  play-again loop.
+- `BasicGuessingGame.Tests/` — dependency-free console-assert unit tests for
+  the engine (no NUnit/xUnit, so it builds with plain `mcs` under Mono).
 
 ## Gameplay
 

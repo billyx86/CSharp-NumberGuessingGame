@@ -2,43 +2,49 @@
 
 namespace BasicGuessingGame
 {
+    /// <summary>
+    /// Thin console adapter around <see cref="GameEngine"/> (issue #9). All
+    /// of the game logic — range check, guess counting, win/lose — lives in
+    /// GameEngine so it can be unit-tested without spawning a process or
+    /// feeding stdin; this class only wires the command line and Console
+    /// to the engine and runs the play-again loop.
+    /// </summary>
     internal class Program
     {
-        // The secret is drawn with rand.Next(MinGuess, MaxGuess + 1), i.e. an
-        // inclusive whole number in this range. (Issue #3: this range is what
-        // the player is told to guess within, and what we now enforce.)
-        const int MinGuess = 0;
-        const int MaxGuess = 99;
-
-        // How many valid guesses the player gets per round unless told otherwise
-        // on the command line. (Issue #4: difficulty / guess limit.)
-        const int DefaultMaxGuesses = 10;
-
         static void Main(string[] args)
         {
-            // Optional guess limit from the command line, e.g. "Guess.exe 15".
-            // A non-numeric or non-positive value falls back to the default.
-            int maxGuesses = DefaultMaxGuesses;
-            if (args.Length > 0 && int.TryParse(args[0], out int parsedLimit) && parsedLimit > 0)
-            {
-                maxGuesses = parsedLimit;
-            }
+            IGameInput input = new ConsoleGameInput();
+            IGameOutput output = new ConsoleGameOutput();
+
+            // Optional command line: "Guess.exe [maxGuesses] [seed]".
+            // Invalid values are announced, never silently dropped (issue #8);
+            // an optional seed makes the round deterministic (issue #7).
+            CommandLineOptions options = GameEngine.ParseCommandLineOptions(args, output);
 
             // Seed the Random ONCE, outside the play-again loop. Re-creating a
             // Random inside a tight loop on .NET Framework can seed from the
-            // same clock tick and repeat the secret number (issue #4).
-            Random rand = new Random();
+            // same clock tick and repeat the secret number (issue #4). With no
+            // seed this stays clock-seeded, exactly as before (issue #7).
+            Random rand = options.Seed.HasValue ? new Random(options.Seed.Value) : new Random();
+
+            GameEngine engine = new GameEngine(input, output, rand, options.MaxGuesses);
 
             bool playAgain = true;
             while (playAgain)
             {
-                PlayOneRound(rand, maxGuesses);
+                RoundOutcome outcome = engine.PlayRound();
+                if (outcome == RoundOutcome.AbortedByInput)
+                {
+                    // EOF ends the session; the engine already said goodbye.
+                    playAgain = false;
+                    continue;
+                }
 
-                Console.WriteLine("Play again? (y/n)");
-                string again = Console.ReadLine();
+                output.WriteLine("Play again? (y/n)");
+                string again = input.ReadLine();
                 if (again == null)                                        // EOF at the prompt
                 {
-                    Console.WriteLine("Input closed. Goodbye!");
+                    output.WriteLine("Input closed. Goodbye!");
                     playAgain = false;
                 }
                 else
@@ -47,65 +53,9 @@ namespace BasicGuessingGame
                     playAgain = (answer == "y" || answer == "yes");
                     if (!playAgain)
                     {
-                        Console.WriteLine("Thanks for playing!");
+                        output.WriteLine("Thanks for playing!");
                     }
                 }
-            }
-        }
-
-        static void PlayOneRound(Random rand, int maxGuesses)
-        {
-            int secretNumber = rand.Next(MinGuess, MaxGuess + 1);         // Random whole number in [MinGuess, MaxGuess].
-            int attemptsUsed = 0;                                         // Only valid, in-range guesses count against the limit.
-            bool won = false;
-
-            Console.WriteLine(
-                "The computer has chosen a random whole number between " + MinGuess + "-" + MaxGuess +
-                ". You have " + maxGuesses + " guesses. Try to guess it.");
-
-            while (!won && attemptsUsed < maxGuesses)
-            {
-                Console.WriteLine("Guess a number: ");
-                string input = Console.ReadLine();                        // Read the user's input as a string.
-                if (input == null)                                        // null means the input stream has been closed (EOF).
-                {
-                    Console.WriteLine("Input closed. Goodbye!");
-                    break;                                                // End the round; the outer loop exits too.
-                }
-
-                if (int.TryParse(input, out int guess) == false)          // Not a whole number...
-                {
-                    Console.WriteLine("Invalid number. Please enter a whole number.");
-                    continue;                                             // Ask again without counting it against the limit.
-                }
-
-                if (guess < MinGuess || guess > MaxGuess)                 // Issue #3: enforce the stated range.
-                {
-                    Console.WriteLine("Please enter a number between " + MinGuess + " and " + MaxGuess + ".");
-                    continue;                                             // Ask again without counting it against the limit.
-                }
-
-                attemptsUsed++;                                           // A real guess: it now counts against the limit.
-
-                if (guess == secretNumber)
-                {
-                    Console.WriteLine("Correct! You have guessed the number.");
-                    won = true;                                           // Player wins; stop the round.
-                }
-                else if (guess < secretNumber)
-                {
-                    Console.WriteLine("Your guess was too low. Try again.");
-                }
-                else
-                {
-                    Console.WriteLine("Your guess was too high. Try again.");
-                }
-            }
-
-            if (!won && attemptsUsed >= maxGuesses)
-            {
-                // Ran out of guesses (issue #4: the player can now lose).
-                Console.WriteLine("Sorry, you ran out of guesses. The number was " + secretNumber + ".");
             }
         }
     }
