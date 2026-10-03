@@ -79,6 +79,15 @@ namespace BasicGuessingGame.Tests
             return output;
         }
 
+        static CapturingOutput RunGameRange(string[] inputLines, int maxGuesses, int? seed, int minGuess, int maxGuess)
+        {
+            CapturingOutput output = new CapturingOutput();
+            Random rand = new Random(seed ?? 1);
+            GameEngine engine = new GameEngine(new ScriptedInput(inputLines), output, rand, maxGuesses, minGuess, maxGuess);
+            engine.PlayRound();
+            return output;
+        }
+
         static void Main()
         {
             Test_InvalidInput_DoesNotConsumeAGuess();
@@ -91,6 +100,12 @@ namespace BasicGuessingGame.Tests
             Test_SeededFullTranscript();
             Test_TooLowThenTooHighSequence();
             Test_ParseCommandLineOptions();
+            Test_CustomRange_SeededTranscript();
+            Test_CustomRange_EnforcesNewBounds();
+            Test_GuessLimitCap_ScalesWithRange();
+            Test_CustomRange_CapClampsLimit();
+            Test_CustomRange_ConstructorValidation();
+            Test_ParseCommandLineOptions_Range();
 
             Console.WriteLine();
             Console.WriteLine(passed + " passed, " + failed + " failed.");
@@ -233,6 +248,119 @@ namespace BasicGuessingGame.Tests
             CommandLineOptions o7 = GameEngine.ParseCommandLineOptions(new[] { "5", "xyz" }, out7);
             CheckEqual(null, o7.Seed, "parse: 'xyz' seed dropped -> clock-seeded");
             Check(out7.Contains("is not a valid seed"), "parse: invalid seed announces itself");
+        }
+
+        static void Test_CustomRange_SeededTranscript()
+        {
+            // Seed 1, range 10-50 (41 values) -> secret 20. Exact transcript
+            // proves the banner, hints and win all use the custom bounds.
+            CapturingOutput output = RunGameRange(new[] { "15", "20" }, 10, 1, 10, 50);
+            string expected =
+                "The computer has chosen a random whole number between 10-50. You have 10 guesses. Try to guess it.\n" +
+                "Guess a number: \n" +
+                "Your guess was too low. Try again.\n" +
+                "Guess a number: \n" +
+                "Correct! You have guessed the number.";
+            CheckEqual(expected, output.All(), "custom-range: exact transcript for seed 1, range 10-50 (secret 20)");
+        }
+
+        static void Test_CustomRange_EnforcesNewBounds()
+        {
+            // Range 10-50 (secret 20, seed 1): 5 is below the new minimum and
+            // 60 above the new maximum — both rejected against 10..50, not
+            // 0..99, and neither consumes the single valid guess.
+            CapturingOutput output = RunGameRange(new[] { "5", "60", "20" }, 1, 1, 10, 50);
+            Check(output.Contains("Please enter a number between 10 and 50."), "custom-range: bounds message uses 10-50");
+            Check(!output.Contains("between 0 and 99"), "custom-range: default bounds never mentioned");
+            Check(!output.Contains("too high"), "custom-range: 60 rejected, not played as 'too high'");
+            Check(!output.Contains("too low"), "custom-range: 5 rejected, not played as 'too low'");
+            Check(output.Contains("Correct! You have guessed the number."), "custom-range: win on the one valid guess (limit 1)");
+        }
+
+        static void Test_GuessLimitCap_ScalesWithRange()
+        {
+            // The cap is the size of the range: N values -> at most N guesses.
+            CheckEqual(100, GameEngine.GuessLimitCap(0, 99), "cap: default 0-99 range -> 100");
+            CheckEqual(41, GameEngine.GuessLimitCap(10, 50), "cap: 10-50 range -> 41");
+            CheckEqual(10, GameEngine.GuessLimitCap(0, 9), "cap: 0-9 range -> 10");
+            CheckEqual(1, GameEngine.GuessLimitCap(7, 7), "cap: single-value range -> 1");
+            CheckEqual(GameEngine.MaxGuessLimitCap, GameEngine.GuessLimitCap(GameEngine.DefaultMinGuess, GameEngine.DefaultMaxGuess), "cap: constant agrees with the function for the default range");
+        }
+
+        static void Test_CustomRange_CapClampsLimit()
+        {
+            // Limit 500 on the 10-50 range must clamp to 41 (the range size),
+            // announcing itself — the same visible-clamp contract as #8.
+            CapturingOutput output = new CapturingOutput();
+            CommandLineOptions options = GameEngine.ParseCommandLineOptions(new[] { "500", "1", "10", "50" }, output);
+            CheckEqual(41, options.MaxGuesses, "custom-range cap: 500 clamped to 41");
+            CheckEqual(10, options.MinGuess, "custom-range cap: min 10 parsed");
+            CheckEqual(50, options.MaxGuess, "custom-range cap: max 50 parsed");
+            Check(output.Contains("above the maximum of 41 for the 10-50 range"), "custom-range cap: clamp announces the range-specific maximum");
+        }
+
+        static void Test_CustomRange_ConstructorValidation()
+        {
+            Random rand = new Random(1);
+            CapturingOutput output = new CapturingOutput();
+            ScriptedInput input = new ScriptedInput();
+
+            bool negativeMinThrown = false;
+            try { new GameEngine(input, output, rand, 10, -1, 50); }
+            catch (ArgumentOutOfRangeException) { negativeMinThrown = true; }
+            Check(negativeMinThrown, "ctor: negative min throws ArgumentOutOfRangeException");
+
+            bool invertedRangeThrown = false;
+            try { new GameEngine(input, output, rand, 10, 50, 10); }
+            catch (ArgumentOutOfRangeException) { invertedRangeThrown = true; }
+            Check(invertedRangeThrown, "ctor: max == min throws ArgumentOutOfRangeException");
+
+            bool invertedMaxBelowMinThrown = false;
+            try { new GameEngine(input, output, rand, 10, 20, 19); }
+            catch (ArgumentOutOfRangeException) { invertedMaxBelowMinThrown = true; }
+            Check(invertedMaxBelowMinThrown, "ctor: max < min throws ArgumentOutOfRangeException");
+
+            GameEngine engine = new GameEngine(input, output, rand, 7, 10, 50);
+            CheckEqual(10, engine.MinGuess, "ctor: MinGuess property set");
+            CheckEqual(50, engine.MaxGuess, "ctor: MaxGuess property set");
+            CheckEqual(7, engine.MaxGuesses, "ctor: MaxGuesses property set");
+        }
+
+        static void Test_ParseCommandLineOptions_Range()
+        {
+            CapturingOutput out1 = new CapturingOutput();
+            CommandLineOptions o1 = GameEngine.ParseCommandLineOptions(new[] { "5", "42" }, out1);
+            CheckEqual(null, o1.MinGuess, "parse range: limit+seed only -> no custom range");
+            CheckEqual(null, o1.MaxGuess, "parse range: limit+seed only -> MaxGuess null");
+            Check(out1.Lines.Count == 0, "parse range: no range -> no message");
+
+            CapturingOutput out2 = new CapturingOutput();
+            CommandLineOptions o2 = GameEngine.ParseCommandLineOptions(new[] { "5", "42", "10", "50" }, out2);
+            CheckEqual(10, o2.MinGuess, "parse range: valid pair 10 50");
+            CheckEqual(50, o2.MaxGuess, "parse range: valid pair max 50");
+            CheckEqual(5, o2.MaxGuesses, "parse range: limit kept");
+            CheckEqual(42, o2.Seed, "parse range: seed kept");
+            Check(out2.Lines.Count == 0, "parse range: valid pair -> no message");
+
+            CapturingOutput out3 = new CapturingOutput();
+            CommandLineOptions o3 = GameEngine.ParseCommandLineOptions(new[] { "5", "42", "-5", "50" }, out3);
+            CheckEqual(null, o3.MinGuess, "parse range: negative min -> default range");
+            Check(out3.Contains("Guess range minimum must be 0 or greater"), "parse range: negative min announces the fallback");
+
+            CapturingOutput out4 = new CapturingOutput();
+            CommandLineOptions o4 = GameEngine.ParseCommandLineOptions(new[] { "5", "42", "50", "10" }, out4);
+            CheckEqual(null, o4.MaxGuess, "parse range: max <= min -> default range");
+            Check(out4.Contains("must be greater than the minimum"), "parse range: inverted range announces the fallback");
+
+            CapturingOutput out5 = new CapturingOutput();
+            CommandLineOptions o5 = GameEngine.ParseCommandLineOptions(new[] { "5", "42", "10" }, out5);
+            CheckEqual(null, o5.MinGuess, "parse range: lone min (no max) -> default range");
+            Check(out5.Contains("is not a valid guess range"), "parse range: lone min announces the fallback");
+
+            CapturingOutput out6 = new CapturingOutput();
+            CommandLineOptions o6 = GameEngine.ParseCommandLineOptions(new[] { "5", "42", "abc", "50" }, out6);
+            CheckEqual(null, o6.MinGuess, "parse range: non-numeric min -> default range");
+            Check(out6.Contains("is not a valid guess range"), "parse range: non-numeric range announces the fallback");
         }
     }
 }
