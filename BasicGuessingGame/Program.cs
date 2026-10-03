@@ -16,9 +16,10 @@ namespace BasicGuessingGame
             IGameInput input = new ConsoleGameInput();
             IGameOutput output = new ConsoleGameOutput();
 
-            // Optional command line: "Guess.exe [maxGuesses] [seed]".
+            // Optional command line: "Guess.exe [maxGuesses] [seed] [min] [max]".
             // Invalid values are announced, never silently dropped (issue #8);
-            // an optional seed makes the round deterministic (issue #7).
+            // an optional seed makes the round deterministic (issue #7); an
+            // optional [min] [max] pair sets a custom guess range (issue #12).
             CommandLineOptions options = GameEngine.ParseCommandLineOptions(args, output);
 
             // Seed the Random ONCE, outside the play-again loop. Re-creating a
@@ -27,7 +28,11 @@ namespace BasicGuessingGame
             // seed this stays clock-seeded, exactly as before (issue #7).
             Random rand = options.Seed.HasValue ? new Random(options.Seed.Value) : new Random();
 
-            GameEngine engine = new GameEngine(input, output, rand, options.MaxGuesses);
+            // Custom guess range when supplied (issue #12), otherwise the
+            // engine's default 0-99 range.
+            GameEngine engine = options.MinGuess.HasValue
+                ? new GameEngine(input, output, rand, options.MaxGuesses, options.MinGuess.Value, options.MaxGuess.Value)
+                : new GameEngine(input, output, rand, options.MaxGuesses);
 
             bool playAgain = true;
             while (playAgain)

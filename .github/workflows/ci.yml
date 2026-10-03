@@ -63,6 +63,12 @@ jobs:
           OUT=$(printf '24\n' | mono BasicGuessingGame/bin/Guess.exe 10 1)
           echo "$OUT"
           echo "$OUT" | grep -q 'Correct! You have guessed the number.'
+      - name: "Smoke test (custom range [min] [max], issue #12 — seed 1, 10-50, secret 20)"
+        run: |
+          OUT=$(printf '20\n' | mono BasicGuessingGame/bin/Guess.exe 10 1 10 50)
+          echo "$OUT"
+          echo "$OUT" | grep -q 'between 10-50'
+          echo "$OUT" | grep -q 'Correct! You have guessed the number.'
       - name: Smoke test (invalid guess limit falls back to 10 and says so)
         run: |
           OUT=$(printf '' | mono BasicGuessingGame/bin/Guess.exe abc)
