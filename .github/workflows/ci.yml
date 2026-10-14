@@ -30,20 +30,24 @@ jobs:
         run: seq 0 99 | mono BasicGuessingGame/bin/Guess.exe 200 | grep -q 'Correct! You have guessed the number.'
       - name: Smoke test (high out-of-range guess is rejected, not "too high")
         run: |
-          OUT=$(printf '150\n' | mono BasicGuessingGame/bin/Guess.exe 50)
+          # || true: the game now exits non-zero on abort/loss (issue #17);
+          # the assertion is on the output, not the exit code.
+          OUT=$(printf '150\n' | mono BasicGuessingGame/bin/Guess.exe 50) || true
           echo "$OUT"
           echo "$OUT" | grep -q 'Please enter a number between 0 and 99'
           ! echo "$OUT" | grep -q 'too high'
       - name: Smoke test (low out-of-range guess is rejected, not "too low")
         run: |
-          OUT=$(printf '%s\n' '-5' | mono BasicGuessingGame/bin/Guess.exe 50)
+          # || true: issue #17 — non-zero exit on abort/loss must not trip set -e.
+          OUT=$(printf '%s\n' '-5' | mono BasicGuessingGame/bin/Guess.exe 50) || true
           echo "$OUT"
           echo "$OUT" | grep -q 'Please enter a number between 0 and 99'
           ! echo "$OUT" | grep -q 'too low'
       - name: Smoke test (player can lose when the guess limit is hit)
         run: |
           for i in $(seq 1 20); do
-            OUT=$(printf '0\n1\n2\n' | mono BasicGuessingGame/bin/Guess.exe 3)
+            # || true: issue #17 — this path exits 1 (loss) by design.
+            OUT=$(printf '0\n1\n2\n' | mono BasicGuessingGame/bin/Guess.exe 3) || true
             if echo "$OUT" | grep -q 'ran out of guesses'; then
               echo "Observed the loss path on attempt $i"
               echo "$OUT" | grep -q 'The number was'
@@ -54,7 +58,8 @@ jobs:
           exit 1
       - name: "Smoke test (seeded round is deterministic — guaranteed loss, secret 24)"
         run: |
-          OUT=$(printf '0\n1\n2\n' | mono BasicGuessingGame/bin/Guess.exe 3 1)
+          # || true: issue #17 — seeded loss exits 1 by design.
+          OUT=$(printf '0\n1\n2\n' | mono BasicGuessingGame/bin/Guess.exe 3 1) || true
           echo "$OUT"
           echo "$OUT" | grep -q 'ran out of guesses'
           echo "$OUT" | grep -q 'The number was 24'
@@ -71,13 +76,15 @@ jobs:
           echo "$OUT" | grep -q 'Correct! You have guessed the number.'
       - name: Smoke test (invalid guess limit falls back to 10 and says so)
         run: |
-          OUT=$(printf '' | mono BasicGuessingGame/bin/Guess.exe abc)
+          # || true: issue #17 — EOF abort exits 2 by design.
+          OUT=$(printf '' | mono BasicGuessingGame/bin/Guess.exe abc) || true
           echo "$OUT"
           echo "$OUT" | grep -q 'is not a valid guess limit'
           echo "$OUT" | grep -q 'You have 10 guesses'
       - name: Smoke test (guess limit above the cap is clamped to 100 and says so)
         run: |
-          OUT=$(printf '' | mono BasicGuessingGame/bin/Guess.exe 999999999)
+          # || true: issue #17 — EOF abort exits 2 by design.
+          OUT=$(printf '' | mono BasicGuessingGame/bin/Guess.exe 999999999) || true
           echo "$OUT"
           echo "$OUT" | grep -q 'above the maximum of 100'
           echo "$OUT" | grep -q 'You have 100 guesses'
@@ -85,23 +92,28 @@ jobs:
         run: seq 0 99 | mono BasicGuessingGame/bin/Guess.exe 200 | grep -q 'Play again? (y/n)'
       - name: "Smoke test (exit codes surface the session outcome, issue #17)"
         run: |
-          set -e
-          # Win -> 0 (guessing 0-99 with limit 200 always wins)
+          # The game exits non-zero on loss/abort by design (issue #17), so
+          # the pipelines below would trip set -e. Capture $? (the pipeline's
+          # exit status = mono's) while set +e, then assert on the values.
+          set +e
           seq 0 99 | mono BasicGuessingGame/bin/Guess.exe 200 >/dev/null
-          test ${PIPESTATUS[1]} -eq 0
-          # Ran out of guesses -> 1 (seeded round, secret 24, guesses 0/1/2)
+          win=$?
           printf '0\n1\n2\n' | mono BasicGuessingGame/bin/Guess.exe 3 1 >/dev/null
-          test ${PIPESTATUS[1]} -eq 1
-          # Aborted (EOF before any round) -> 2
+          loss=$?
           printf '' | mono BasicGuessingGame/bin/Guess.exe >/dev/null
-          test ${PIPESTATUS[1]} -eq 2
-          # Help -> 3
+          abort=$?
           mono BasicGuessingGame/bin/Guess.exe -h >/dev/null
-          test $? -eq 3
+          help=$?
+          set -e
+          test "$win" -eq 0 || { echo "win: want 0, got $win"; exit 1; }
+          test "$loss" -eq 1 || { echo "loss: want 1, got $loss"; exit 1; }
+          test "$abort" -eq 2 || { echo "abort: want 2, got $abort"; exit 1; }
+          test "$help" -eq 3 || { echo "help: want 3, got $help"; exit 1; }
           echo "All exit-code assertions passed"
       - name: "Smoke test (extra positional args are announced, issue #18)"
         run: |
-          OUT=$(printf '' | mono BasicGuessingGame/bin/Guess.exe 10 1 10 50 999)
+          # || true: issue #17 — EOF abort exits 2 by design.
+          OUT=$(printf '' | mono BasicGuessingGame/bin/Guess.exe 10 1 10 50 999) || true
           echo "$OUT"
           echo "$OUT" | grep -q 'Ignoring extra argument "999"'
           echo "$OUT" | grep -q 'between 10-50'
