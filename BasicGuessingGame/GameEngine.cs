@@ -52,7 +52,9 @@ namespace BasicGuessingGame
     /// seed for deterministic rounds (issue #7), and (optionally) a custom
     /// guess range [min] [max] (issue #12). MinGuess/MaxGuess are null when
     /// the caller didn't supply (a valid) custom range, in which case the
-    /// engine falls back to the default 0-99 range.
+    /// engine falls back to the default 0-99 range. ShowHelp is true when a
+    /// help flag (-h / --help / ?) was present; the usage text has already
+    /// been written to the output and no round should be started (issue #16).
     /// </summary>
     public struct CommandLineOptions
     {
@@ -60,6 +62,7 @@ namespace BasicGuessingGame
         public int? Seed;
         public int? MinGuess;
         public int? MaxGuess;
+        public bool ShowHelp;
     }
 
     /// <summary>
@@ -166,11 +169,38 @@ namespace BasicGuessingGame
         }
 
         /// <summary>
+        /// The usage text printed for -h / --help / ? (issue #16). Exposed
+        /// as a constant so tests can assert against the exact wording.
+        /// </summary>
+        public const string UsageText =
+            "Usage: Guess.exe [maxGuesses] [seed] [min] [max]\n" +
+            "\n" +
+            "All arguments are optional:\n" +
+            "  maxGuesses   guesses per round (default 10, capped at the\n" +
+            "               size of the active range)\n" +
+            "  seed         RNG seed for a deterministic round\n" +
+            "  min          inclusive lower bound of the guess range\n" +
+            "  max          inclusive upper bound of the guess range\n" +
+            "\n" +
+            "  [min] and [max] must be given together (0 <= min < max);\n" +
+            "  without them the secret is in 0-99. Invalid values are\n" +
+            "  announced, never silently dropped.";
+
+        /// <summary>True for the help flags: -h, --help and ? (issue #16).</summary>
+        public static bool IsHelpFlag(string arg)
+        {
+            return arg == "-h" || arg == "--help" || arg == "?";
+        }
+
+        /// <summary>
         /// Parses the optional "Guess.exe [maxGuesses] [seed] [min] [max]"
         /// arguments. Invalid values are NOT silently ignored (issues #8/#12):
         /// the player is told what was dropped / clamped and which value is
         /// actually used. An unparseable seed falls back to a clock-seeded
         /// Random; an invalid range falls back to the default 0-99 range.
+        ///
+        /// A help flag anywhere on the command line (-h / --help / ?, issue
+        /// #16) writes the usage text and sets ShowHelp — no game is started.
         ///
         /// A range whose span would overflow int (or exceed the maximum span
         /// Random.Next can represent) is rejected with a message and the
@@ -184,11 +214,23 @@ namespace BasicGuessingGame
                 MaxGuesses = DefaultMaxGuesses,
                 Seed = null,
                 MinGuess = null,
-                MaxGuess = null
+                MaxGuess = null,
+                ShowHelp = false
             };
             if (args == null)
             {
                 return result;
+            }
+
+            // ---- help flag (any position, issue #16) ---------------------
+            foreach (string arg in args)
+            {
+                if (IsHelpFlag(arg))
+                {
+                    output.WriteLine(UsageText);
+                    result.ShowHelp = true;
+                    return result;
+                }
             }
 
             // ---- [maxGuesses] (positional arg 1, optional) -----------------

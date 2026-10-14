@@ -111,6 +111,7 @@ namespace BasicGuessingGame.Tests
             Test_ParseCommandLineOptions_IntMaxValueRange_Valid();
             Test_ParseCommandLineOptions_MalformedRange_NoLeftoverLocals();
             Test_PlayRound_SecretAtIntMaxValue();
+            Test_ParseCommandLineOptions_Help();
 
             Console.WriteLine();
             Console.WriteLine(passed + " passed, " + failed + " failed.");
@@ -447,6 +448,42 @@ namespace BasicGuessingGame.Tests
             CheckEqual(RoundOutcome.Won, outcome, "secret@max: range ending at int.MaxValue plays and can be won");
             Check(output.Contains("Correct! You have guessed the number."), "secret@max: win message");
             Check(output.Contains("between 2147483646-2147483647"), "secret@max: banner uses the custom bounds");
+        }
+
+        // -------------------------------------------------------------------
+        // Issue #16: help flag
+        // -------------------------------------------------------------------
+
+        static void Test_ParseCommandLineOptions_Help()
+        {
+            CapturingOutput out1 = new CapturingOutput();
+            CommandLineOptions o1 = GameEngine.ParseCommandLineOptions(new[] { "-h" }, out1);
+            Check(o1.ShowHelp, "help: -h sets ShowHelp");
+            CheckEqual(1, out1.Lines.Count, "help: -h prints exactly one line (the usage block)");
+            Check(out1.Lines[0].StartsWith("Usage: Guess.exe [maxGuesses] [seed] [min] [max]"), "help: usage line first");
+
+            CapturingOutput out2 = new CapturingOutput();
+            CommandLineOptions o2 = GameEngine.ParseCommandLineOptions(new[] { "--help" }, out2);
+            Check(o2.ShowHelp, "help: --help sets ShowHelp");
+            Check(out2.Lines[0].StartsWith("Usage: Guess.exe"), "help: --help prints the usage line");
+
+            CapturingOutput out3 = new CapturingOutput();
+            CommandLineOptions o3 = GameEngine.ParseCommandLineOptions(new[] { "?" }, out3);
+            Check(o3.ShowHelp, "help: ? sets ShowHelp");
+
+            // Help wins even when mixed with other (invalid-looking) args.
+            CapturingOutput out4 = new CapturingOutput();
+            CommandLineOptions o4 = GameEngine.ParseCommandLineOptions(new[] { "abc", "-h" }, out4);
+            Check(o4.ShowHelp, "help: -h anywhere on the command line");
+            Check(out4.Lines.Count == 1, "help: only the usage is printed, no validation noise");
+
+            // A game that isn't a help request must not set the flag.
+            CapturingOutput out5 = new CapturingOutput();
+            CommandLineOptions o5 = GameEngine.ParseCommandLineOptions(new[] { "10", "1" }, out5);
+            Check(!o5.ShowHelp, "help: normal args do not set ShowHelp");
+
+            // Usage text documents the full optional CLI.
+            Check(GameEngine.UsageText.Contains("[maxGuesses] [seed] [min] [max]"), "help: usage documents the full CLI");
         }
     }
 }

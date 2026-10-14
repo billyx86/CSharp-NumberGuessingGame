@@ -19,8 +19,15 @@ namespace BasicGuessingGame
             // Optional command line: "Guess.exe [maxGuesses] [seed] [min] [max]".
             // Invalid values are announced, never silently dropped (issue #8);
             // an optional seed makes the round deterministic (issue #7); an
-            // optional [min] [max] pair sets a custom guess range (issue #12).
+            // optional [min] [max] pair sets a custom guess range (issue #12);
+            // a help flag (-h / --help / ?) prints usage and exits without
+            // starting a round (issue #16).
             CommandLineOptions options = GameEngine.ParseCommandLineOptions(args, output);
+            if (options.ShowHelp)
+            {
+                Environment.ExitCode = 3;   // help requested (issue #16)
+                return;
+            }
 
             // Seed the Random ONCE, outside the play-again loop. Re-creating a
             // Random inside a tight loop on .NET Framework can seed from the
