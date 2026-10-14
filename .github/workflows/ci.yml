@@ -83,3 +83,19 @@ jobs:
           echo "$OUT" | grep -q 'You have 100 guesses'
       - name: Smoke test (play-again prompt appears after a win)
         run: seq 0 99 | mono BasicGuessingGame/bin/Guess.exe 200 | grep -q 'Play again? (y/n)'
+      - name: "Smoke test (exit codes surface the session outcome, issue #17)"
+        run: |
+          set -e
+          # Win -> 0 (guessing 0-99 with limit 200 always wins)
+          seq 0 99 | mono BasicGuessingGame/bin/Guess.exe 200 >/dev/null
+          test ${PIPESTATUS[1]} -eq 0
+          # Ran out of guesses -> 1 (seeded round, secret 24, guesses 0/1/2)
+          printf '0\n1\n2\n' | mono BasicGuessingGame/bin/Guess.exe 3 1 >/dev/null
+          test ${PIPESTATUS[1]} -eq 1
+          # Aborted (EOF before any round) -> 2
+          printf '' | mono BasicGuessingGame/bin/Guess.exe >/dev/null
+          test ${PIPESTATUS[1]} -eq 2
+          # Help -> 3
+          mono BasicGuessingGame/bin/Guess.exe -h >/dev/null
+          test $? -eq 3
+          echo "All exit-code assertions passed"
