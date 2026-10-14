@@ -78,6 +78,27 @@ function Invoke-Game([string[]]$lines, [string[]]$args_) {
     return $out
 }
 
+# Like Invoke-Game but returns the process exit code (for issue #17).
+function Invoke-Game-Exit([string[]]$lines, [string[]]$args_) {
+    $input = ($lines -join "`r`n") + ($lines.Length -gt 0 ? "`r`n" : "")
+    $proc = New-Object System.Diagnostics.Process
+    $proc.StartInfo.FileName = $gameBin
+    $proc.StartInfo.Arguments = ($args_ -join ' ')
+    $proc.StartInfo.UseShellExecute = $false
+    $proc.StartInfo.RedirectStandardInput = $true
+    $proc.StartInfo.RedirectStandardOutput = $true
+    $proc.StartInfo.RedirectStandardError = $true
+    $proc.Start() | Out-Null
+    if ($input.Length -gt 0) { $proc.StandardInput.Write($input) }
+    $proc.StandardInput.Close()
+    [void]$proc.StandardOutput.ReadToEnd()
+    $proc.WaitForExit()
+    return $proc.ExitCode
+}
+function Assert-ExitCode([string]$name, [int]$code, [int]$expected) {
+    if ($code -ne $expected) { Fail "$name : exit code $code (want $expected)" }
+}
+
 # ---------------------------------------------------------------------------
 # 2. Unit tests (the suite prints "N passed, M failed" and exits non-zero on failure).
 # ---------------------------------------------------------------------------
@@ -156,6 +177,21 @@ Assert-Output "limit clamped to 100" $out 'You have 100 guesses'
 Step "Smoke: play-again prompt appears after a win"
 $seq = 0..99 | ForEach-Object { [string]$_ }
 Assert-Output "play again" (Invoke-Game $seq @(200)) 'Play again? \(y/n\)'
+
+Step "Smoke: exit codes surface the session outcome (issue #17)"
+# Win -> 0 (guessing 0-99 with limit 200 always wins)
+Assert-ExitCode "win exit code" (Invoke-Game-Exit $seq @(200)) 0
+# Ran out of guesses -> 1 (seeded round, secret 24, guesses 0/1/2)
+Assert-ExitCode "loss exit code" (Invoke-Game-Exit @('0','1','2') @(3,1)) 1
+# Aborted (EOF before any round) -> 2
+Assert-ExitCode "abort exit code" (Invoke-Game-Exit @() @()) 2
+# Help -> 3
+Assert-ExitCode "help exit code" (Invoke-Game-Exit @() @('-h')) 3
+
+Step "Smoke: extra positional args are announced (issue #18)"
+$out = Invoke-Game @() @('10','1','10','50','999')
+Assert-Output "extra-arg notice" $out 'Ignoring extra argument "999"'
+Assert-Output "range still in effect" $out 'between 10-50'
 
 Step "ALL GREEN"
 Write-Host "Local runner finished: all checks passed."

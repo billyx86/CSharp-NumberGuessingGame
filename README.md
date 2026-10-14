@@ -47,7 +47,31 @@ arguments are optional:
   together (a lone value is not a range and falls back to the default 0–99
   with a notice); `min` must be `>= 0` and `max > min`. The bounds message,
   out-of-range rejection, and the guess-limit cap all track the active
-  range, so the game stays consistent for any range.
+  range, so the game stays consistent for any range. A range whose span is
+  too large for `Random.Next` to draw from (e.g. `0 2147483647`, issue #15)
+  is announced and falls back to the default range instead of crashing
+  mid-round.
+- Anything beyond the fourth positional argument is **not** silently
+  dropped (issue #18) — the program prints a notice listing the extra
+  arguments and uses the first four, matching the "announce, never
+  silently drop" contract of the other invalid-input paths.
+- `-h` / `--help` / `?` anywhere on the command line (issue #16) prints a
+  usage block and exits with code **3** without starting a round.
+
+### Exit codes (issue #17)
+
+The process exit code surfaces how the session ended, so shell scripts can
+tell:
+
+| Exit code | Meaning                                                        |
+|-----------|----------------------------------------------------------------|
+| `0`       | won the last round                                             |
+| `1`       | ran out of guesses on the last round                           |
+| `2`       | aborted by EOF before any round finished                       |
+| `3`       | help requested (`-h` / `--help` / `?`)                         |
+
+A multi-round session exits with the code of the **last** round (a win
+after a loss exits `0`).
 
 ## Run the tests locally (issue #13)
 
@@ -58,7 +82,7 @@ don't have to push to see whether their change broke anything:
 - **Windows (MSBuild):** `.\run-tests.ps1` from a Developer Command Prompt.
 
 Both compile the game and the unit-test exe, run the deterministic unit
-suite (76 assertions, seeded for reproducibility), and run the same
+suite (125 assertions, seeded for reproducibility), and run the same
 `printf`/scripted-stdin smoke tests the CI workflow runs. They exit non-zero
 on the first failure.
 
@@ -121,13 +145,16 @@ The input handling is intentional and covered by the CI smoke tests:
 ## Tests
 
 CI (`.github/workflows/ci.yml`) compiles the game and the unit-test projects
-and runs the full pipeline: a deterministic unit suite of **76 assertions**
+and runs the full pipeline: a deterministic unit suite of **125 assertions**
 (driven through the engine's injected seed, covering win/lose, hints,
-out-of-range rejection, invalid input, EOF, command-line parsing, and custom
-range bounds) plus a set of `printf`-driven smoke tests against the real
-console program: invalid input, EOF, guaranteed win, out-of-range rejection
-(both directions), the loss path, seeded deterministic rounds, custom range
-rounds, guess-limit fallback/clamping, and the play-again prompt.
+out-of-range rejection, invalid input, EOF, command-line parsing, custom
+range bounds, the help flag, extra-argument notices, and the
+int.MaxValue-adjacent range draw) plus a set of `printf`-driven smoke tests
+against the real console program: invalid input, EOF, guaranteed win,
+out-of-range rejection (both directions), the loss path, seeded
+deterministic rounds, custom range rounds, guess-limit fallback/clamping,
+the play-again prompt, the session outcome's exit codes (0/1/2/3, issue
+#17), and the extra-argument notice (issue #18).
 
 The same pipeline runs locally via `run-tests.sh` / `make test`
 (Linux/macOS, Mono) or `run-tests.ps1` (Windows, MSBuild) — see
