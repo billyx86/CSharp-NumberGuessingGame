@@ -103,6 +103,31 @@ echo "$OUT" | grep -q 'You have 100 guesses' || fail "limit clamped to 100"
 step "Smoke: play-again prompt appears after a win"
 seq 0 99 | mono "$GAME_BIN" 200 | grep -q 'Play again? (y/n)' || fail "play again"
 
+step "Smoke: exit codes surface the session outcome (issue #17)"
+TMPIN="$(mktemp)"
+# Win -> 0 (guessing 0-99 with limit 200 always wins)
+seq 0 99 > "$TMPIN"
+mono "$GAME_BIN" 200 < "$TMPIN" >/dev/null
+test $? -eq 0 || fail "win exit code (want 0)"
+# Ran out of guesses -> 1 (seeded round, secret 24, guesses 0/1/2)
+printf '0\n1\n2\n' > "$TMPIN"
+mono "$GAME_BIN" 3 1 < "$TMPIN" >/dev/null
+test $? -eq 1 || fail "loss exit code (want 1)"
+# Aborted (EOF before any round) -> 2
+: > "$TMPIN"
+mono "$GAME_BIN" < "$TMPIN" >/dev/null
+test $? -eq 2 || fail "abort exit code (want 2)"
+# Help -> 3
+mono "$GAME_BIN" -h >/dev/null
+test $? -eq 3 || fail "help exit code (want 3)"
+
+step "Smoke: extra positional args are announced (issue #18)"
+# Still the same (now empty) temp file = immediate EOF.
+OUT=$(mono "$GAME_BIN" 10 1 10 50 999 < "$TMPIN")
+rm -f "$TMPIN"
+echo "$OUT" | grep -q 'Ignoring extra argument "999"' || fail "extra-arg notice"
+echo "$OUT" | grep -q 'between 10-50' || fail "range still in effect"
+
 step "ALL GREEN"
 printf 'Local runner finished: all checks passed.\n'
 exit 0
