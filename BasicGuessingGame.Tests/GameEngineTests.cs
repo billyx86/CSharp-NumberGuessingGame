@@ -106,6 +106,11 @@ namespace BasicGuessingGame.Tests
             Test_CustomRange_CapClampsLimit();
             Test_CustomRange_ConstructorValidation();
             Test_ParseCommandLineOptions_Range();
+            Test_GuessLimitCap_LargeRange_NoOverflow();
+            Test_ParseCommandLineOptions_OverflowRange_FallsBack();
+            Test_ParseCommandLineOptions_IntMaxValueRange_Valid();
+            Test_ParseCommandLineOptions_MalformedRange_NoLeftoverLocals();
+            Test_PlayRound_SecretAtIntMaxValue();
 
             Console.WriteLine();
             Console.WriteLine(passed + " passed, " + failed + " failed.");
@@ -361,6 +366,87 @@ namespace BasicGuessingGame.Tests
             CommandLineOptions o6 = GameEngine.ParseCommandLineOptions(new[] { "5", "42", "abc", "50" }, out6);
             CheckEqual(null, o6.MinGuess, "parse range: non-numeric min -> default range");
             Check(out6.Contains("is not a valid guess range"), "parse range: non-numeric range announces the fallback");
+        }
+
+        // -------------------------------------------------------------------
+        // Issue #15: large custom ranges near int.MaxValue
+        // -------------------------------------------------------------------
+
+        static void Test_GuessLimitCap_LargeRange_NoOverflow()
+        {
+            // The 0..int.MaxValue range spans 2^31 values, which overflows
+            // int in the old `max - min + 1`; the cap must not.
+            CheckEqual((int)2147483647, GameEngine.GuessLimitCap(0, int.MaxValue), "cap: 0-int.MaxValue -> int.MaxValue (no overflow)");
+            CheckEqual((int)1147483648, GameEngine.GuessLimitCap(1000000000, int.MaxValue), "cap: 1e9-int.MaxValue -> 1147483648");
+            CheckEqual(100, GameEngine.GuessLimitCap(0, 99), "cap: small ranges unaffected");
+        }
+
+        static void Test_ParseCommandLineOptions_OverflowRange_FallsBack()
+        {
+            // Repro 1 from the issue: 0-2147483647 is exactly 2^31 values —
+            // one too many for Random.Next(int, int). Must be announced and
+            // fall back to 0-99, never throw.
+            CapturingOutput output = new CapturingOutput();
+            CommandLineOptions options = GameEngine.ParseCommandLineOptions(new[] { "10", "1", "0", "2147483647" }, output);
+            CheckEqual(null, options.MinGuess, "overflow range: rejected, default range used");
+            CheckEqual(null, options.MaxGuess, "overflow range: MaxGuess null");
+            CheckEqual(10, options.MaxGuesses, "overflow range: limit kept (clamped against the DEFAULT range)");
+            Check(output.Contains("is too large"), "overflow range: rejection announced");
+            Check(output.Contains("using the default range 0-99"), "overflow range: fallback announced");
+            // The cap clamp must run against the default range (cap 100), not
+            // a bogus or overflowing one.
+            Check(!output.Contains("above the maximum"), "overflow range: no bogus cap clamp");
+        }
+
+        static void Test_ParseCommandLineOptions_IntMaxValueRange_Valid()
+        {
+            // Repro 2 from the issue: 1e9-2147483647 spans 1147483648 values
+            // — within Random.Next's reach. Must be accepted (the old code
+            // crashed in PlayRound on MaxGuess + 1).
+            CapturingOutput output = new CapturingOutput();
+            CommandLineOptions options = GameEngine.ParseCommandLineOptions(new[] { "1", "1", "1000000000", "2147483647" }, output);
+            CheckEqual(1000000000, options.MinGuess, "int-max range: min accepted");
+            CheckEqual(2147483647, options.MaxGuess, "int-max range: max accepted");
+            CheckEqual(1, options.MaxGuesses, "int-max range: limit 1 kept");
+            Check(output.Lines.Count == 0, "int-max range: no messages for a valid range");
+
+            // And the engine itself must play it without overflowing the
+            // secret draw.
+            CapturingOutput out2 = new CapturingOutput();
+            GameEngine engine = new GameEngine(new ScriptedInput(), out2, new Random(1), 1, 1000000000, int.MaxValue);
+            RoundOutcome outcome = engine.PlayRound();   // immediate EOF -> aborted, secret already drawn
+            CheckEqual(RoundOutcome.AbortedByInput, outcome, "int-max range: PlayRound survives the secret draw (EOF abort)");
+            Check(out2.Contains("between 1000000000-2147483647"), "int-max range: banner uses the custom bounds");
+        }
+
+        static void Test_ParseCommandLineOptions_MalformedRange_NoLeftoverLocals()
+        {
+            // Repro 3 from the issue: a malformed 2nd range value used to
+            // leave half-parsed locals (5, 0) behind, so the cap clamp ran
+            // against a bogus "5-0" range and crashed. Now the invalid pair
+            // resets to the defaults before the clamp.
+            CapturingOutput output = new CapturingOutput();
+            CommandLineOptions options = GameEngine.ParseCommandLineOptions(new[] { "10", "1", "5", "abc" }, output);
+            CheckEqual(null, options.MinGuess, "malformed range: rejected, default range used");
+            CheckEqual(10, options.MaxGuesses, "malformed range: limit kept (valid against the default range)");
+            Check(output.Contains("is not a valid guess range"), "malformed range: rejection announced");
+            Check(!output.Contains("above the maximum"), "malformed range: no bogus cap clamp (no leftover locals)");
+        }
+
+        static void Test_PlayRound_SecretAtIntMaxValue()
+        {
+            // The secret-draw path itself: a range ending exactly at
+            // int.MaxValue must not compute MaxGuess + 1 (the old code
+            // crashed here). The two-value range [Max-1, Max] is winnable by
+            // guessing both values, so a Won outcome proves the draw ran.
+            CapturingOutput output = new CapturingOutput();
+            GameEngine engine = new GameEngine(
+                new ScriptedInput((int.MaxValue - 1).ToString(), int.MaxValue.ToString()),
+                output, new Random(1), 2, int.MaxValue - 1, int.MaxValue);
+            RoundOutcome outcome = engine.PlayRound();
+            CheckEqual(RoundOutcome.Won, outcome, "secret@max: range ending at int.MaxValue plays and can be won");
+            Check(output.Contains("Correct! You have guessed the number."), "secret@max: win message");
+            Check(output.Contains("between 2147483646-2147483647"), "secret@max: banner uses the custom bounds");
         }
     }
 }

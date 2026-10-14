@@ -99,13 +99,27 @@ namespace BasicGuessingGame
         public const int MaxGuessLimitCap = DefaultMaxGuess - DefaultMinGuess + 1;
 
         /// <summary>
+        /// The largest guess-range span the game can draw a secret from
+        /// (issue #15): <c>Random.Next(int, int)</c> can represent at most
+        /// <c>int.MaxValue</c> values (the 0..int.MaxValue range), so a
+        /// wider span is rejected at parse time and construction time
+        /// rather than crashing mid-round.
+        /// </summary>
+        public const long MaxRangeSpan = int.MaxValue;
+
+        /// <summary>
         /// Guess-limit cap for an arbitrary range (issue #12): a range with
         /// N values can never benefit from more than N guesses, so an
         /// oversized limit is a guaranteed win, never a difficulty.
+        ///
+        /// Computed in long so a range near int.MaxValue cannot overflow
+        /// the span (issue #15); the result is capped at
+        /// <see cref="MaxRangeSpan"/>.
         /// </summary>
         public static int GuessLimitCap(int minGuess, int maxGuess)
         {
-            return maxGuess - minGuess + 1;
+            long span = (long)maxGuess - minGuess + 1;
+            return span > MaxRangeSpan ? (int)MaxRangeSpan : (int)span;
         }
 
         readonly IGameInput input;
@@ -142,6 +156,7 @@ namespace BasicGuessingGame
             if (maxGuesses < 1) throw new ArgumentOutOfRangeException("maxGuesses");
             if (minGuess < 0) throw new ArgumentOutOfRangeException("minGuess");
             if (maxGuess <= minGuess) throw new ArgumentOutOfRangeException("maxGuess");
+            if ((long)maxGuess - minGuess + 1 > MaxRangeSpan) throw new ArgumentOutOfRangeException("maxGuess");   // span too wide for Random.Next (issue #15)
             this.input = input;
             this.output = output;
             this.random = random;
@@ -156,6 +171,11 @@ namespace BasicGuessingGame
         /// the player is told what was dropped / clamped and which value is
         /// actually used. An unparseable seed falls back to a clock-seeded
         /// Random; an invalid range falls back to the default 0-99 range.
+        ///
+        /// A range whose span would overflow int (or exceed the maximum span
+        /// Random.Next can represent) is rejected with a message and the
+        /// default 0-99 range is used (issue #15) — same "announce, never
+        /// silently drop" style as the other invalid-input paths.
         /// </summary>
         public static CommandLineOptions ParseCommandLineOptions(string[] args, IGameOutput output)
         {
@@ -202,35 +222,56 @@ namespace BasicGuessingGame
             // ---- [min] [max] (positional args 3/4, optional, issue #12) ----
             // The pair must be given together; a lone [min] (or [max]) is
             // not a range and falls back to the default with a message.
+            // minGuess/maxGuess track the ACTIVE range for the cap clamp
+            // below: they hold the defaults until a valid pair is parsed
+            // (issue #15: invalid pairs must reset them, not leave
+            // half-parsed values behind).
             int minGuess = DefaultMinGuess;
             int maxGuess = DefaultMaxGuess;
             if (args.Length > 2)
             {
                 bool hasBoth = args.Length > 3;
-                bool ok = hasBoth && int.TryParse(args[2], out minGuess) && int.TryParse(args[3], out maxGuess);
-                if (!ok)
+                bool parsed = hasBoth && int.TryParse(args[2], out int parsedMin) && int.TryParse(args[3], out int parsedMax);
+                if (!parsed)
                 {
                     string given = hasBoth ? args[2] + " " + args[3] : args[2];
                     output.WriteLine("\"" + given + "\" is not a valid guess range (two whole numbers, 0 <= min < max, given together); using the default range " + DefaultMinGuess + "-" + DefaultMaxGuess + ".");
+                    minGuess = DefaultMinGuess;
+                    maxGuess = DefaultMaxGuess;
                 }
-                else if (minGuess < 0)
+                else if (parsedMin < 0)
                 {
                     output.WriteLine("Guess range minimum must be 0 or greater; using the default range " + DefaultMinGuess + "-" + DefaultMaxGuess + ".");
+                    minGuess = DefaultMinGuess;
+                    maxGuess = DefaultMaxGuess;
                 }
-                else if (maxGuess <= minGuess)
+                else if (parsedMax <= parsedMin)
                 {
-                    output.WriteLine("Guess range maximum (" + maxGuess + ") must be greater than the minimum (" + minGuess + "); using the default range " + DefaultMinGuess + "-" + DefaultMaxGuess + ".");
+                    output.WriteLine("Guess range maximum (" + parsedMax + ") must be greater than the minimum (" + parsedMin + "); using the default range " + DefaultMinGuess + "-" + DefaultMaxGuess + ".");
+                    minGuess = DefaultMinGuess;
+                    maxGuess = DefaultMaxGuess;
+                }
+                else if ((long)parsedMax - parsedMin + 1 > MaxRangeSpan)
+                {
+                    // Span too wide for Random.Next(int, int) (issue #15):
+                    // announce and fall back, never crash mid-round.
+                    output.WriteLine("Guess range " + parsedMin + "-" + parsedMax + " is too large (more than " + MaxRangeSpan + " values); using the default range " + DefaultMinGuess + "-" + DefaultMaxGuess + ".");
+                    minGuess = DefaultMinGuess;
+                    maxGuess = DefaultMaxGuess;
                 }
                 else
                 {
+                    minGuess = parsedMin;
+                    maxGuess = parsedMax;
                     result.MinGuess = minGuess;
                     result.MaxGuess = maxGuess;
                 }
             }
 
             // ---- clamp the guess limit to THIS range's size (issue #12) ----
-            // (If the range was invalid, minGuess/maxGuess still hold the
-            // defaults, so the limit is clamped against the default range.)
+            // (If the range was invalid, minGuess/maxGuess were reset to the
+            // defaults above, so the limit is clamped against the default
+            // range — issue #15.)
             int cap = GuessLimitCap(minGuess, maxGuess);
             if (result.MaxGuesses > cap)
             {
@@ -244,7 +285,22 @@ namespace BasicGuessingGame
         /// <summary>Plays one full round and returns how it ended.</summary>
         public RoundOutcome PlayRound()
         {
-            int secretNumber = random.Next(MinGuess, MaxGuess + 1);         // Whole number in [MinGuess, MaxGuess].
+            int secretNumber;
+            if (MaxGuess == int.MaxValue)
+            {
+                // MaxGuess + 1 would overflow, so Next(min, max + 1) cannot
+                // be called for a range ending at int.MaxValue. Span-based
+                // draw instead: Next(span) is uniform over [0, span) and
+                // MinGuess + draw lands in [MinGuess, MaxGuess] without
+                // overflow (issue #15). The span is guaranteed to fit an
+                // int by the MaxRangeSpan check in the constructor.
+                long span = (long)MaxGuess - MinGuess + 1;
+                secretNumber = MinGuess + random.Next((int)span);
+            }
+            else
+            {
+                secretNumber = random.Next(MinGuess, MaxGuess + 1);   // Whole number in [MinGuess, MaxGuess].
+            }
             int attemptsUsed = 0;                                           // Only valid, in-range guesses count against the limit.
 
             output.WriteLine(
