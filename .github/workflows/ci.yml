@@ -99,3 +99,9 @@ jobs:
           mono BasicGuessingGame/bin/Guess.exe -h >/dev/null
           test $? -eq 3
           echo "All exit-code assertions passed"
+      - name: "Smoke test (extra positional args are announced, issue #18)"
+        run: |
+          OUT=$(printf '' | mono BasicGuessingGame/bin/Guess.exe 10 1 10 50 999)
+          echo "$OUT"
+          echo "$OUT" | grep -q 'Ignoring extra argument "999"'
+          echo "$OUT" | grep -q 'between 10-50'

@@ -112,6 +112,7 @@ namespace BasicGuessingGame.Tests
             Test_ParseCommandLineOptions_MalformedRange_NoLeftoverLocals();
             Test_PlayRound_SecretAtIntMaxValue();
             Test_ParseCommandLineOptions_Help();
+            Test_ParseCommandLineOptions_ExtraArgs();
 
             Console.WriteLine();
             Console.WriteLine(passed + " passed, " + failed + " failed.");
@@ -484,6 +485,47 @@ namespace BasicGuessingGame.Tests
 
             // Usage text documents the full optional CLI.
             Check(GameEngine.UsageText.Contains("[maxGuesses] [seed] [min] [max]"), "help: usage documents the full CLI");
+        }
+
+        // -------------------------------------------------------------------
+        // Issue #18: extra positional args are announced, never dropped
+        // -------------------------------------------------------------------
+
+        static void Test_ParseCommandLineOptions_ExtraArgs()
+        {
+            // One extra arg: announced, first four still parse (issue #18).
+            CapturingOutput out1 = new CapturingOutput();
+            CommandLineOptions o1 = GameEngine.ParseCommandLineOptions(new[] { "10", "1", "10", "50", "999" }, out1);
+            Check(out1.Lines.Count == 1, "extras: exactly one notice");
+            Check(out1.Lines[0].Contains("Ignoring extra argument"), "extras: notice names the extras");
+            Check(out1.Lines[0].Contains("\"999\""), "extras: the stray value is quoted in the notice");
+            CheckEqual(10, o1.MaxGuesses, "extras: maxGuesses still parsed from arg 1");
+            CheckEqual(1, o1.Seed, "extras: seed still parsed from arg 2");
+            CheckEqual(10, o1.MinGuess, "extras: min still parsed from arg 3");
+            CheckEqual(50, o1.MaxGuess, "extras: max still parsed from arg 4");
+            Check(!o1.ShowHelp, "extras: not treated as help");
+
+            // Several extra args: all listed, plural notice.
+            CapturingOutput out2 = new CapturingOutput();
+            CommandLineOptions o2 = GameEngine.ParseCommandLineOptions(new[] { "5", "2", "0", "4", "x", "y" }, out2);
+            Check(out2.Lines[0].Contains("Ignoring extra arguments \"x\", \"y\""), "extras: multiple extras listed in order");
+            CheckEqual(5, o2.MaxGuesses, "extras(2): maxGuesses unaffected");
+            CheckEqual(0, o2.MinGuess, "extras(2): min unaffected");
+            CheckEqual(4, o2.MaxGuess, "extras(2): max unaffected");
+
+            // Exactly four args: the documented maximum — no notice at all.
+            CapturingOutput out3 = new CapturingOutput();
+            GameEngine.ParseCommandLineOptions(new[] { "10", "1", "10", "50" }, out3);
+            Check(out3.Lines.Count == 0, "extras: 4 args (the documented max) prints nothing");
+
+            // Extras + invalid range: both notices, in parse order, and the
+            // range still falls back to the default.
+            CapturingOutput out4 = new CapturingOutput();
+            CommandLineOptions o4 = GameEngine.ParseCommandLineOptions(new[] { "10", "1", "50", "10", "zz" }, out4);
+            CheckEqual(2, out4.Lines.Count, "extras: invalid range AND extras -> two notices");
+            Check(out4.Lines[0].Contains("must be greater than the minimum"), "extras: range notice first (parsed first)");
+            Check(out4.Lines[1].Contains("Ignoring extra argument"), "extras: extras notice second");
+            Check(!o4.MinGuess.HasValue, "extras: invalid range still falls back to the default");
         }
     }
 }

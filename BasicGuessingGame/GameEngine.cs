@@ -1,4 +1,5 @@
 using System;
+using System.Text;
 
 namespace BasicGuessingGame
 {
@@ -308,6 +309,22 @@ namespace BasicGuessingGame
                     result.MinGuess = minGuess;
                     result.MaxGuess = maxGuess;
                 }
+            }
+
+            // ---- extra positional args (issue #18) ------------------------
+            // The CLI takes at most [maxGuesses] [seed] [min] [max] — anything
+            // beyond the 4th argument is not part of the documented grammar,
+            // so it is announced (never silently dropped, issue #8) and the
+            // first four are used.
+            if (args.Length > 4)
+            {
+                StringBuilder extras = new StringBuilder();
+                for (int i = 4; i < args.Length; i++)
+                {
+                    if (i > 4) extras.Append(", ");
+                    extras.Append('\"').Append(args[i]).Append('"');
+                }
+                output.WriteLine("Ignoring extra argument" + (args.Length - 4 > 1 ? "s" : "") + " " + extras + " (the command line takes at most [maxGuesses] [seed] [min] [max]).");
             }
 
             // ---- clamp the guess limit to THIS range's size (issue #12) ----
