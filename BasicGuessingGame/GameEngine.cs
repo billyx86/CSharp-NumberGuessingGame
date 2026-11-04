@@ -54,8 +54,10 @@ namespace BasicGuessingGame
     /// guess range [min] [max] (issue #12). MinGuess/MaxGuess are null when
     /// the caller didn't supply (a valid) custom range, in which case the
     /// engine falls back to the default 0-99 range. ShowHelp is true when a
-    /// help flag (-h / --help / ?) was present; the usage text has already
-    /// been written to the output and no round should be started (issue #16).
+    /// help flag was present — -h / --help / ? (issue #16) or the
+    /// Windows-console idioms /? / /help / -help / help, long forms
+    /// case-insensitive (issue #20); the usage text has already
+    /// been written to the output and no round should be started.
     /// </summary>
     public struct CommandLineOptions
     {
@@ -170,8 +172,9 @@ namespace BasicGuessingGame
         }
 
         /// <summary>
-        /// The usage text printed for -h / --help / ? (issue #16). Exposed
-        /// as a constant so tests can assert against the exact wording.
+        /// The usage text printed for any help flag (issue #16/#20).
+        /// Exposed as a constant so tests can assert against the exact
+        /// wording.
         /// </summary>
         public const string UsageText =
             "Usage: Guess.exe [maxGuesses] [seed] [min] [max]\n" +
@@ -185,12 +188,31 @@ namespace BasicGuessingGame
             "\n" +
             "  [min] and [max] must be given together (0 <= min < max);\n" +
             "  without them the secret is in 0-99. Invalid values are\n" +
-            "  announced, never silently dropped.";
+            "  announced, never silently dropped.\n" +
+            "\n" +
+            "  Any of the help flags -h, --help, ?, /?, /help, -help, help\n" +
+            "  (long forms are case-insensitive) prints this usage and\n" +
+            "  exits 3 without starting a round.";
 
-        /// <summary>True for the help flags: -h, --help and ? (issue #16).</summary>
+        /// <summary>
+        /// True for the help flags: -h, --help and ? (issue #16), plus the
+        /// Windows-console idioms /?, /help, -help and the bare word help
+        /// (issue #20). The long forms (--help /help -help help) match
+        /// case-insensitively so /HELP, --Help and Help behave like the
+        /// original forms; the short forms (-h, ?, /?) match exactly.
+        /// Surrounding whitespace is ignored; null and empty are not help
+        /// flags.
+        /// </summary>
         public static bool IsHelpFlag(string arg)
         {
-            return arg == "-h" || arg == "--help" || arg == "?";
+            if (arg == null) return false;
+            string a = arg.Trim();
+            if (a.Length == 0) return false;
+            if (a == "-h" || a == "?" || a == "/?") return true;
+            return a.Equals("--help", StringComparison.OrdinalIgnoreCase)
+                || a.Equals("/help", StringComparison.OrdinalIgnoreCase)
+                || a.Equals("-help", StringComparison.OrdinalIgnoreCase)
+                || a.Equals("help", StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>
@@ -200,8 +222,10 @@ namespace BasicGuessingGame
         /// actually used. An unparseable seed falls back to a clock-seeded
         /// Random; an invalid range falls back to the default 0-99 range.
         ///
-        /// A help flag anywhere on the command line (-h / --help / ?, issue
-        /// #16) writes the usage text and sets ShowHelp — no game is started.
+        /// A help flag anywhere on the command line — -h / --help / ?
+        /// (issue #16) or /? / /help / -help / help, long forms
+        /// case-insensitive (issue #20) — writes the usage text and sets
+        /// ShowHelp — no game is started.
         ///
         /// A range whose span would overflow int (or exceed the maximum span
         /// Random.Next can represent) is rejected with a message and the

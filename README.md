@@ -55,8 +55,10 @@ arguments are optional:
   dropped (issue #18) — the program prints a notice listing the extra
   arguments and uses the first four, matching the "announce, never
   silently drop" contract of the other invalid-input paths.
-- `-h` / `--help` / `?` anywhere on the command line (issue #16) prints a
-  usage block and exits with code **3** without starting a round.
+- `-h` / `--help` / `?` anywhere on the command line (issue #16) — or the
+  Windows-console idioms `/?` / `/help` / `-help` / `help` (issue #20),
+  with the long forms matching case-insensitively (`/HELP`, `--Help`, …) —
+  prints a usage block and exits with code **3** without starting a round.
 
 ### Exit codes (issue #17)
 
@@ -68,7 +70,7 @@ tell:
 | `0`       | won the last round                                             |
 | `1`       | ran out of guesses on the last round                           |
 | `2`       | aborted by EOF before any round finished                       |
-| `3`       | help requested (`-h` / `--help` / `?`)                         |
+| `3`       | help requested (any help flag — `-h` / `--help` / `?` / `/?` / `/help` / `-help` / `help`) |
 
 A multi-round session exits with the code of the **last** round (a win
 after a loss exits `0`).
@@ -82,7 +84,7 @@ don't have to push to see whether their change broke anything:
 - **Windows (MSBuild):** `.\run-tests.ps1` from a Developer Command Prompt.
 
 Both compile the game and the unit-test exe, run the deterministic unit
-suite (125 assertions, seeded for reproducibility), and run the same
+suite (163 assertions, seeded for reproducibility), and run the same
 `printf`/scripted-stdin smoke tests the CI workflow runs. They exit non-zero
 on the first failure.
 
@@ -145,7 +147,7 @@ The input handling is intentional and covered by the CI smoke tests:
 ## Tests
 
 CI (`.github/workflows/ci.yml`) compiles the game and the unit-test projects
-and runs the full pipeline: a deterministic unit suite of **125 assertions**
+and runs the full pipeline: a deterministic unit suite of **163 assertions**
 (driven through the engine's injected seed, covering win/lose, hints,
 out-of-range rejection, invalid input, EOF, command-line parsing, custom
 range bounds, the help flag, extra-argument notices, and the
@@ -154,7 +156,8 @@ against the real console program: invalid input, EOF, guaranteed win,
 out-of-range rejection (both directions), the loss path, seeded
 deterministic rounds, custom range rounds, guess-limit fallback/clamping,
 the play-again prompt, the session outcome's exit codes (0/1/2/3, issue
-#17), and the extra-argument notice (issue #18).
+#17), the extra-argument notice (issue #18), and the Windows-console help
+idioms printing usage and exiting 3 (issue #20).
 
 The same pipeline runs locally via `run-tests.sh` / `make test`
 (Linux/macOS, Mono) or `run-tests.ps1` (Windows, MSBuild) — see

@@ -112,6 +112,7 @@ namespace BasicGuessingGame.Tests
             Test_ParseCommandLineOptions_MalformedRange_NoLeftoverLocals();
             Test_PlayRound_SecretAtIntMaxValue();
             Test_ParseCommandLineOptions_Help();
+            Test_IsHelpFlag_WindowsIdioms();
             Test_ParseCommandLineOptions_ExtraArgs();
 
             Console.WriteLine();
@@ -485,6 +486,68 @@ namespace BasicGuessingGame.Tests
 
             // Usage text documents the full optional CLI.
             Check(GameEngine.UsageText.Contains("[maxGuesses] [seed] [min] [max]"), "help: usage documents the full CLI");
+        }
+
+        // -------------------------------------------------------------------
+        // Issue #20: Windows-console help idioms (/? /help -help help)
+        // -------------------------------------------------------------------
+
+        static void Test_IsHelpFlag_WindowsIdioms()
+        {
+            // The four new idioms are help flags.
+            Check(GameEngine.IsHelpFlag("/?"), "win-help: /? is a help flag");
+            Check(GameEngine.IsHelpFlag("/help"), "win-help: /help is a help flag");
+            Check(GameEngine.IsHelpFlag("-help"), "win-help: -help is a help flag");
+            Check(GameEngine.IsHelpFlag("help"), "win-help: bare help is a help flag");
+
+            // The long forms match case-insensitively.
+            Check(GameEngine.IsHelpFlag("HELP"), "win-help: HELP is a help flag (case-insensitive)");
+            Check(GameEngine.IsHelpFlag("/HELP"), "win-help: /HELP is a help flag (case-insensitive)");
+            Check(GameEngine.IsHelpFlag("--Help"), "win-help: --Help is a help flag (case-insensitive)");
+            Check(GameEngine.IsHelpFlag("-Help"), "win-help: -Help is a help flag (case-insensitive)");
+
+            // Surrounding whitespace is ignored (console args can carry it).
+            Check(GameEngine.IsHelpFlag("  /?  "), "win-help: /? with surrounding whitespace is a help flag");
+            Check(GameEngine.IsHelpFlag(" help "), "win-help: help with surrounding whitespace is a help flag");
+
+            // Regression: the original three forms still work.
+            Check(GameEngine.IsHelpFlag("-h"), "win-help: -h still a help flag (regression)");
+            Check(GameEngine.IsHelpFlag("--help"), "win-help: --help still a help flag (regression)");
+            Check(GameEngine.IsHelpFlag("?"), "win-help: ? still a help flag (regression)");
+
+            // Not help flags: numbers, null, empty, whitespace-only, and
+            // lookalikes that differ from every documented form.
+            Check(!GameEngine.IsHelpFlag("0"), "win-help: 0 is not a help flag");
+            Check(!GameEngine.IsHelpFlag("5"), "win-help: 5 is not a help flag");
+            Check(!GameEngine.IsHelpFlag(null), "win-help: null is not a help flag");
+            Check(!GameEngine.IsHelpFlag(""), "win-help: empty string is not a help flag");
+            Check(!GameEngine.IsHelpFlag("   "), "win-help: whitespace-only is not a help flag");
+            Check(!GameEngine.IsHelpFlag("/h"), "win-help: /h is not a help flag (not documented)");
+            Check(!GameEngine.IsHelpFlag("h"), "win-help: bare h is not a help flag (not documented)");
+            Check(!GameEngine.IsHelpFlag("help me"), "win-help: 'help me' is not a help flag (extra words)");
+            Check(!GameEngine.IsHelpFlag("helpful"), "win-help: helpful is not a help flag (prefix mismatch)");
+
+            // Parsing: the new idioms set ShowHelp and print only the usage,
+            // no round is started (no validation noise, no extra lines).
+            foreach (string idiom in new[] { "/?", "/help", "-help", "help", "HELP" })
+            {
+                CapturingOutput outN = new CapturingOutput();
+                CommandLineOptions oN = GameEngine.ParseCommandLineOptions(new[] { idiom }, outN);
+                Check(oN.ShowHelp, "win-help: '" + idiom + "' sets ShowHelp");
+                CheckEqual(1, outN.Lines.Count, "win-help: '" + idiom + "' prints exactly one line (the usage block)");
+            }
+
+            // A new idiom wins over other args too (any position, like -h).
+            CapturingOutput outMix = new CapturingOutput();
+            CommandLineOptions oMix = GameEngine.ParseCommandLineOptions(new[] { "10", "1", "/?" }, outMix);
+            Check(oMix.ShowHelp, "win-help: /? anywhere on the command line");
+            CheckEqual(1, outMix.Lines.Count, "win-help: /? mixed with other args prints only the usage");
+
+            // Usage text now documents the new forms.
+            Check(GameEngine.UsageText.Contains("/?"), "win-help: usage documents /?");
+            Check(GameEngine.UsageText.Contains("/help"), "win-help: usage documents /help");
+            Check(GameEngine.UsageText.Contains("-help"), "win-help: usage documents -help");
+            Check(GameEngine.UsageText.Contains("help"), "win-help: usage documents help");
         }
 
         // -------------------------------------------------------------------

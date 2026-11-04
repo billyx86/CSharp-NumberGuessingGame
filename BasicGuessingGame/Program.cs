@@ -35,8 +35,9 @@ namespace BasicGuessingGame
             // Invalid values are announced, never silently dropped (issue #8);
             // an optional seed makes the round deterministic (issue #7); an
             // optional [min] [max] pair sets a custom guess range (issue #12);
-            // a help flag (-h / --help / ?) prints usage and exits 3 without
-            // starting a round (issue #16).
+            // a help flag — -h / --help / ? (issue #16) or the
+            // Windows-console idioms /? / /help / -help / help (issue #20) —
+            // prints usage and exits 3 without starting a round.
             CommandLineOptions options = GameEngine.ParseCommandLineOptions(args, output);
             if (options.ShowHelp)
             {
