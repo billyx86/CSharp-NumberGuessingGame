@@ -193,6 +193,16 @@ $out = Invoke-Game @() @('10','1','10','50','999')
 Assert-Output "extra-arg notice" $out 'Ignoring extra argument "999"'
 Assert-Output "range still in effect" $out 'between 10-50'
 
+Step "Smoke: Windows-console help idioms print usage and exit 3 (issue #20)"
+$winFlags = @('/?', '/help', '-help', 'help')
+foreach ($flag in $winFlags) {
+    $out = Invoke-Game @() @($flag)
+    Assert-Output "win-help $flag usage" $out 'Usage: Guess\.exe'
+    Assert-Output "win-help $flag not a guess limit" $out 'not a valid guess limit' -MustNotMatch
+    Assert-Output "win-help $flag no round started" $out 'Guess a number' -MustNotMatch
+    Assert-ExitCode "win-help $flag exit code" (Invoke-Game-Exit @() @($flag)) 3
+}
+
 Step "ALL GREEN"
 Write-Host "Local runner finished: all checks passed."
 exit 0

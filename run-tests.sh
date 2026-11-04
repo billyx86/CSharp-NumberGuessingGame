@@ -128,6 +128,17 @@ rm -f "$TMPIN"
 echo "$OUT" | grep -q 'Ignoring extra argument "999"' || fail "extra-arg notice"
 echo "$OUT" | grep -q 'between 10-50' || fail "range still in effect"
 
+step "Smoke: Windows-console help idioms print usage and exit 3 (issue #20)"
+for FLAG in '/?' '/help' '-help' 'help'; do
+  OUT=$(mono "$GAME_BIN" "$FLAG")
+  code=$?
+  echo "$OUT" | grep -q 'Usage: Guess.exe' || fail "$FLAG: usage text missing"
+  ! echo "$OUT" | grep -q 'not a valid guess limit' || fail "$FLAG: treated as a guess limit"
+  ! echo "$OUT" | grep -q 'Guess a number' || fail "$FLAG: started a round"
+  [ "$code" -eq 3 ] || fail "$FLAG: want exit 3, got $code"
+  echo "$FLAG: usage + exit 3 OK"
+done
+
 step "ALL GREEN"
 printf 'Local runner finished: all checks passed.\n'
 exit 0

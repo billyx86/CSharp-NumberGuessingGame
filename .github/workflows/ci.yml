@@ -110,6 +110,19 @@ jobs:
           test "$abort" -eq 2 || { echo "abort: want 2, got $abort"; exit 1; }
           test "$help" -eq 3 || { echo "help: want 3, got $help"; exit 1; }
           echo "All exit-code assertions passed"
+      - name: "Smoke test (Windows-console help idioms print usage and exit 3, issue #20)"
+        run: |
+          set +e
+          for FLAG in '/?' '/help' '-help' 'help'; do
+            OUT=$(mono BasicGuessingGame/bin/Guess.exe "$FLAG")
+            code=$?
+            echo "$OUT" | grep -q 'Usage: Guess.exe' || { echo "$FLAG: usage text missing"; exit 1; }
+            ! echo "$OUT" | grep -q 'not a valid guess limit' || { echo "$FLAG: treated as a guess limit"; exit 1; }
+            ! echo "$OUT" | grep -q 'Guess a number' || { echo "$FLAG: started a round"; exit 1; }
+            [ "$code" -eq 3 ] || { echo "$FLAG: want exit 3, got $code"; exit 1; }
+            echo "$FLAG: usage + exit 3 OK"
+          done
+          set -e
       - name: "Smoke test (extra positional args are announced, issue #18)"
         run: |
           # || true: issue #17 — EOF abort exits 2 by design.
