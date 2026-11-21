@@ -173,7 +173,7 @@ jobs:
           if (-not $msbuild) { $msbuild = "${env:windir}\Microsoft.NET\Framework64\v4.0.30319\MSBuild.exe" }
           if (-not $msbuild) { throw "MSBuild not found" }
           Write-Host "Using MSBuild: $msbuild"
-          & $msbuild BasicGuessingGame.sln /nologo /m /v:minimal /p:Configuration=Release /p:Platform=AnyCPU
+          & $msbuild BasicGuessingGame.sln /nologo /m /v:minimal /p:Configuration=Release "/p:Platform=Any CPU"
       - name: Run MSBuild unit-test exe and assert the same pass count as the Mono path
         shell: bash
         run: |

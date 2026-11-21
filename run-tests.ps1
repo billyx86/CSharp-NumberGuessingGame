@@ -52,7 +52,7 @@ Write-Host "Using MSBuild: $msbuild"
 # 1. Build (Release, AnyCPU) — both projects via the solution.
 # ---------------------------------------------------------------------------
 Step "Build solution (msbuild -m -p:Configuration=Release)"
-& $msbuild BasicGuessingGame.sln /nologo /m /v:minimal /p:Configuration=Release /p:Platform=AnyCPU
+& $msbuild BasicGuessingGame.sln /nologo /m /v:minimal /p:Configuration=Release "/p:Platform=Any CPU"
 if ($LASTEXITCODE -ne 0) { Fail "build" }
 
 $gameBin = Join-Path $root "BasicGuessingGame\bin\Release\BasicGuessingGame.exe"
