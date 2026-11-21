@@ -305,7 +305,17 @@ namespace BasicGuessingGame
             if (args.Length > 2)
             {
                 bool hasBoth = args.Length > 3;
-                bool parsed = hasBoth && int.TryParse(args[2], out int parsedMin) && int.TryParse(args[3], out int parsedMax);
+                int parsedMin = 0, parsedMax = 0;
+                bool parsed = false;
+                if (hasBoth)
+                {
+                    // (Hoisted out of the && chain: Roslyn rejects the
+                    // out-variables declared inside `hasBoth && TryParse(...)`
+                    // as unassigned — CS0165 — because it can't prove the
+                    // else branch below is only reached after the parse ran.
+                    // mcs didn't catch this; the MSBuild CI job did.)
+                    parsed = int.TryParse(args[2], out parsedMin) && int.TryParse(args[3], out parsedMax);
+                }
                 if (!parsed)
                 {
                     string given = hasBoth ? args[2] + " " + args[3] : args[2];
