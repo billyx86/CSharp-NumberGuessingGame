@@ -162,7 +162,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build solution (MSBuild — both csproj projects, net472)
-        run: msbuild BasicGuessingGame.sln /nologo /m /v:minimal /p:Configuration=Release /p:Platform=AnyCPU
+        run: |
+          # msbuild is not on the runner PATH — resolve it the same way
+          # run-tests.ps1 does: vswhere first, then the in-box Framework MSBuild.
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $msbuild = $null
+          if (Test-Path $vswhere) {
+            $msbuild = & $vswhere -latest -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1
+          }
+          if (-not $msbuild) { $msbuild = "${env:windir}\Microsoft.NET\Framework64\v4.0.30319\MSBuild.exe" }
+          if (-not $msbuild) { throw "MSBuild not found" }
+          Write-Host "Using MSBuild: $msbuild"
+          & $msbuild BasicGuessingGame.sln /nologo /m /v:minimal /p:Configuration=Release /p:Platform=AnyCPU
       - name: Run MSBuild unit-test exe and assert the same pass count as the Mono path
         shell: bash
         run: |
