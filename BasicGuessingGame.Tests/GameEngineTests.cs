@@ -114,6 +114,8 @@ namespace BasicGuessingGame.Tests
             Test_ParseCommandLineOptions_Help();
             Test_IsHelpFlag_WindowsIdioms();
             Test_ParseCommandLineOptions_ExtraArgs();
+            Test_InRoundHelp_PrintsReminder_DoesNotConsumeAGuess();
+            Test_InRoundQuit_ExitsCleanly_DoesNotConsumeAGuess();
 
             Console.WriteLine();
             Console.WriteLine(passed + " passed, " + failed + " failed.");
@@ -589,6 +591,75 @@ namespace BasicGuessingGame.Tests
             Check(out4.Lines[0].Contains("must be greater than the minimum"), "extras: range notice first (parsed first)");
             Check(out4.Lines[1].Contains("Ignoring extra argument"), "extras: extras notice second");
             Check(!o4.MinGuess.HasValue, "extras: invalid range still falls back to the default");
+        }
+
+        // -------------------------------------------------------------------
+        // Issue #23: typing help/? at the in-game guess prompt
+        // -------------------------------------------------------------------
+
+        static void Test_InRoundHelp_PrintsReminder_DoesNotConsumeAGuess()
+        {
+            // Seed 1 -> secret 24. Limit 2: 'help' and '?' must not consume
+            // guesses, so the round still wins with a single valid guess.
+            CapturingOutput output = RunGame(new[] { "help", "0", "?", "24" }, 2, 1);
+            Check(output.Contains("Number is between 0 and 99"), "in-round help: reminder states the range");
+            Check(output.Contains("2 guesses left"), "in-round help: reminder states remaining guesses before any guess (limit 2)");
+            Check(output.Contains("'q' to quit"), "in-round help: reminder documents the quit key");
+            Check(output.Contains("too low"), "in-round help: a real guess still happened (0 < 24)");
+            Check(output.Contains("Correct! You have guessed the number."), "in-round help: win after 2 help prompts + 2 valid guesses (limit 2)");
+            Check(!output.Contains("Invalid number"), "in-round help: help/? are not rejected as invalid input");
+
+            // Exact reminder wording after one valid guess (limit 2):
+            // "1 guess left", singular form, and exactly one such line.
+            CapturingOutput output2 = RunGame(new[] { "0", "help", "24" }, 2, 1);
+            const string exactReminder = "Number is between 0 and 99 - 1 guess left. Type a whole number to guess; 'help' or '?' for this reminder; 'q' to quit (does not count as a guess).";
+            int reminderLines = 0;
+            foreach (string line in output2.Lines)
+            {
+                if (line == exactReminder) reminderLines++;
+            }
+            Check(reminderLines == 1, "in-round help: exact reminder line after one used guess");
+
+            // Case-insensitive (matching the command-line treatment).
+            CapturingOutput output3 = RunGame(new[] { "HELP", "24" }, 1, 1);
+            Check(output3.Contains("Number is between 0 and 99"), "in-round help: HELP (upper case) also reminds");
+            Check(output3.Contains("Correct!"), "in-round help: HELP did not consume the only guess");
+
+            // The usage text now documents the in-round keys.
+            Check(GameEngine.UsageText.Contains("'help' or '?'"), "in-round help: usage documents the in-round help key");
+            Check(GameEngine.UsageText.Contains("'q', 'quit' or 'exit'"), "in-round help: usage documents the quit keys");
+        }
+
+        // -------------------------------------------------------------------
+        // Issue #24: q/quit/exit ends the round cleanly mid-round
+        // -------------------------------------------------------------------
+
+        static void Test_InRoundQuit_ExitsCleanly_DoesNotConsumeAGuess()
+        {
+            // 'q' on the first prompt: banner + prompt + goodbye, nothing
+            // else — no guess counted, no loss, no play-again.
+            CapturingOutput output = RunGame(new[] { "q" }, 10, 1);
+            CheckEqual(3, output.Lines.Count, "in-round quit: exactly banner, prompt, goodbye");
+            CheckEqual("Goodbye!", output.Lines[2], "in-round quit: goodbye line");
+            Check(!output.Contains("Invalid number"), "in-round quit: q is not rejected as invalid input");
+            Check(!output.Contains("too low"), "in-round quit: no guess was played");
+            Check(!output.Contains("ran out of guesses"), "in-round quit: quitting is not a loss");
+            Check(!output.Contains("Play again"), "in-round quit: session ends, no play-again prompt");
+
+            // 'quit' and 'exit' work too, and case-insensitively.
+            foreach (string word in new[] { "quit", "EXIT", "  q  " })
+            {
+                CapturingOutput out2 = RunGame(new[] { word }, 5, 1);
+                Check(out2.Contains("Goodbye!"), "in-round quit: '" + word + "' ends the round with a goodbye");
+                Check(!out2.Contains("Invalid number"), "in-round quit: '" + word + "' is not invalid input");
+            }
+
+            // Quitting does not consume guesses: one 'q' after two valid
+            // guesses still leaves the round in the aborted (not lost) state.
+            CapturingOutput output2 = RunGame(new[] { "0", "1", "q" }, 10, 1);
+            Check(output2.Contains("too low"), "in-round quit: earlier guesses were played");
+            Check(output2.Contains("Goodbye!"), "in-round quit: q after real guesses still quits cleanly");
+            Check(!output2.Contains("ran out of guesses"), "in-round quit: not a loss even with guesses used");
         }
     }
 }

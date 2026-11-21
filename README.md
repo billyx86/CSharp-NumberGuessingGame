@@ -69,7 +69,7 @@ tell:
 |-----------|----------------------------------------------------------------|
 | `0`       | won the last round                                             |
 | `1`       | ran out of guesses on the last round                           |
-| `2`       | aborted by EOF before any round finished                       |
+| `2`       | aborted — EOF before a round finished, or the in-round quit key `q`/`quit`/`exit` (issue #24) |
 | `3`       | help requested (any help flag — `-h` / `--help` / `?` / `/?` / `/help` / `-help` / `help`) |
 
 A multi-round session exits with the code of the **last** round (a win
@@ -84,7 +84,7 @@ don't have to push to see whether their change broke anything:
 - **Windows (MSBuild):** `.\run-tests.ps1` from a Developer Command Prompt.
 
 Both compile the game and the unit-test exe, run the deterministic unit
-suite (163 assertions, seeded for reproducibility), and run the same
+suite (189 assertions, seeded for reproducibility), and run the same
 `printf`/scripted-stdin smoke tests the CI workflow runs. They exit non-zero
 on the first failure.
 
@@ -124,6 +124,12 @@ supplied (issue #12). Each round you get a limited number of guesses (the
 - Guess too low / too high → you're told which direction to go.
 - Guess correctly → you win the round.
 - Run out of guesses → you lose, and the number is revealed.
+- Type `help` or `?` at the guess prompt → a short reminder (the active
+  range, how many guesses remain, and the help/quit keys) is re-printed
+  **without** using a guess (issue #23).
+- Type `q`, `quit` or `exit` at the guess prompt → the session ends cleanly
+  with `Goodbye!` and exit code **2** (the same code as an EOF abort) — it
+  does not count as a guess (issue #24).
 - After a round you're asked to play again (`y`/`n`).
 
 ## Guess validation
@@ -141,23 +147,39 @@ The input handling is intentional and covered by the CI smoke tests:
   guess.
 - **Only valid, in-range guesses count** against the limit, so typos don't
   cost you a turn.
+- **In-round help (issue #23).** `help` or `?` (case-insensitive, matching
+  the command-line treatment) at the guess prompt re-prints a short
+  reminder — the active range, how many guesses remain, and the help/quit
+  keys — without consuming a guess and without ending the round.
+- **In-round quit (issue #24).** `q`, `quit` or `exit` (case-insensitive)
+  at the guess prompt ends the session cleanly with `Goodbye!` and exit
+  code **2** (the same code as an EOF abort — an abort is an abort, so no
+  new code is introduced). It does not count as a guess.
 - **EOF** (closed input) exits cleanly with `Input closed. Goodbye!` instead
   of looping forever.
 
 ## Tests
 
 CI (`.github/workflows/ci.yml`) compiles the game and the unit-test projects
-and runs the full pipeline: a deterministic unit suite of **163 assertions**
+and runs the full pipeline: a deterministic unit suite of **189 assertions**
 (driven through the engine's injected seed, covering win/lose, hints,
 out-of-range rejection, invalid input, EOF, command-line parsing, custom
-range bounds, the help flag, extra-argument notices, and the
-int.MaxValue-adjacent range draw) plus a set of `printf`-driven smoke tests
-against the real console program: invalid input, EOF, guaranteed win,
+range bounds, the help flag, the in-round `help`/`?` reminder (issue #23),
+the in-round `q`/`quit`/`exit` quit (issue #24), extra-argument notices, and
+the int.MaxValue-adjacent range draw) plus a set of `printf`-driven smoke
+tests against the real console program: invalid input, EOF, guaranteed win,
 out-of-range rejection (both directions), the loss path, seeded
 deterministic rounds, custom range rounds, guess-limit fallback/clamping,
 the play-again prompt, the session outcome's exit codes (0/1/2/3, issue
-#17), the extra-argument notice (issue #18), and the Windows-console help
-idioms printing usage and exiting 3 (issue #20).
+#17), the extra-argument notice (issue #18), the Windows-console help
+idioms printing usage and exiting 3 (issue #20), the in-round help reminder
+(issue #23), and the in-round quit with exit code 2 (issue #24).
+
+A second CI job (`windows`, issue #22) exercises the Windows/MSBuild build
+path: it builds both .NET Framework 4.7.2 `csproj` projects from the
+solution with MSBuild, runs the MSBuild-built unit-test exe and asserts it
+reports the same pass count as the Mono path, and syntax-validates
+`run-tests.ps1` with the PowerShell parser.
 
 The same pipeline runs locally via `run-tests.sh` / `make test`
 (Linux/macOS, Mono) or `run-tests.ps1` (Windows, MSBuild) — see

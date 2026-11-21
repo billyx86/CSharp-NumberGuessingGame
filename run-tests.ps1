@@ -52,7 +52,7 @@ Write-Host "Using MSBuild: $msbuild"
 # 1. Build (Release, AnyCPU) — both projects via the solution.
 # ---------------------------------------------------------------------------
 Step "Build solution (msbuild -m -p:Configuration=Release)"
-& $msbuild BasicGuessingGame.sln /nologo /m /v:minimal /p:Configuration=Release /p:Platform=AnyCPU
+& $msbuild BasicGuessingGame.sln /nologo /m /v:minimal /p:Configuration=Release "/p:Platform=Any CPU"
 if ($LASTEXITCODE -ne 0) { Fail "build" }
 
 $gameBin = Join-Path $root "BasicGuessingGame\bin\Release\BasicGuessingGame.exe"
@@ -202,6 +202,22 @@ foreach ($flag in $winFlags) {
     Assert-Output "win-help $flag no round started" $out 'Guess a number' -MustNotMatch
     Assert-ExitCode "win-help $flag exit code" (Invoke-Game-Exit @() @($flag)) 3
 }
+
+Step "Smoke: in-round help/? prints a reminder and does not consume a guess (issue #23)"
+# Seed 1 -> secret 24, limit 2: 'help' and '?' must not consume guesses.
+$out = Invoke-Game @('help', '?', '0', '24') @(2, 1)
+Assert-Output "in-round help reminder" $out 'Number is between 0 and 99'
+Assert-Output "in-round help guess count" $out 'guesses left'
+Assert-Output "in-round help still wins" $out 'Correct! You have guessed the number\.'
+Assert-Output "in-round help not invalid" $out 'Invalid number' -MustNotMatch
+
+Step "Smoke: in-round q/quit/exit ends the session cleanly (issue #24)"
+$out = Invoke-Game @('q') @(5, 1)
+Assert-Output "in-round quit goodbye" $out 'Goodbye!'
+Assert-Output "in-round quit not invalid" $out 'Invalid number' -MustNotMatch
+Assert-Output "in-round quit not a loss" $out 'ran out of guesses' -MustNotMatch
+# Issue #17 — quit exits 2 (the same code as an abort) by design.
+Assert-ExitCode "in-round quit exit code" (Invoke-Game-Exit @('q') @(5, 1)) 2
 
 Step "ALL GREEN"
 Write-Host "Local runner finished: all checks passed."
