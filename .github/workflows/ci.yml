@@ -130,3 +130,53 @@ jobs:
           echo "$OUT"
           echo "$OUT" | grep -q 'Ignoring extra argument "999"'
           echo "$OUT" | grep -q 'between 10-50'
+      - name: "Smoke test (in-round help/? prints a reminder and does not consume a guess, issue #23)"
+        run: |
+          # Seed 1 -> secret 24, limit 2: 'help' and '?' must not consume
+          # guesses, so the round still wins with the two valid guesses.
+          OUT=$(printf 'help\n?\n0\n24\n' | mono BasicGuessingGame/bin/Guess.exe 2 1)
+          echo "$OUT"
+          echo "$OUT" | grep -q 'Number is between 0 and 99' || { echo "reminder missing"; exit 1; }
+          echo "$OUT" | grep -q 'guesses left' || { echo "reminder missing the guess count"; exit 1; }
+          echo "$OUT" | grep -q 'Correct! You have guessed the number.' || { echo "help/? consumed a guess"; exit 1; }
+          ! echo "$OUT" | grep -q 'Invalid number' || { echo "help/? rejected as invalid input"; exit 1; }
+      - name: "Smoke test (in-round q/quit/exit ends the session cleanly, issue #24)"
+        run: |
+          # || true: issue #17 — quit exits 2 (the same code as an abort) by design.
+          set +e
+          OUT=$(printf 'q\n' | mono BasicGuessingGame/bin/Guess.exe 5 1)
+          code=$?
+          set -e
+          echo "$OUT"
+          echo "$OUT" | grep -q 'Goodbye!' || { echo "no goodbye line"; exit 1; }
+          ! echo "$OUT" | grep -q 'Invalid number' || { echo "q rejected as invalid input"; exit 1; }
+          ! echo "$OUT" | grep -q 'ran out of guesses' || { echo "quit counted as a loss"; exit 1; }
+          test "$code" -eq 2 || { echo "quit: want exit 2, got $code"; exit 1; }
+
+  # Windows / MSBuild build path (issue #22): builds both .NET Framework 4.7.2
+  # csproj projects with MSBuild (not just mcs), runs the MSBuild-built
+  # unit-test exe and asserts it reports the same pass count as the Mono
+  # path, and syntax-validates run-tests.ps1 with the real PowerShell parser.
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build solution (MSBuild — both csproj projects, net472)
+        run: msbuild BasicGuessingGame.sln /nologo /m /v:minimal /p:Configuration=Release /p:Platform=AnyCPU
+      - name: Run MSBuild unit-test exe and assert the same pass count as the Mono path
+        shell: bash
+        run: |
+          OUT=$(./BasicGuessingGame.Tests/bin/Release/GameEngineTests.exe)
+          echo "$OUT" | tail -n 3
+          echo "$OUT" | grep -q '189 passed, 0 failed' || { echo "Windows/MSBuild pass-count drift (want '189 passed, 0 failed')"; exit 1; }
+          echo "Windows/MSBuild unit tests: 189 passed, 0 failed"
+      - name: Syntax-validate run-tests.ps1 (PowerShell parser)
+        run: |
+          $tokens = $null; $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path .\run-tests.ps1).Path, [ref]$tokens, [ref]$errors)
+          if ($errors -and $errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Host "ps1 parse error: $_" }
+            throw "run-tests.ps1 has $($errors.Count) parse error(s)"
+          }
+          Write-Host "run-tests.ps1 parses cleanly"

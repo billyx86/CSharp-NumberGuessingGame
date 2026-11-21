@@ -139,6 +139,23 @@ for FLAG in '/?' '/help' '-help' 'help'; do
   echo "$FLAG: usage + exit 3 OK"
 done
 
+step "Smoke: in-round help/? prints a reminder and does not consume a guess (issue #23)"
+# Seed 1 -> secret 24, limit 2: 'help' and '?' must not consume guesses.
+OUT=$(printf 'help\n?\n0\n24\n' | mono "$GAME_BIN" 2 1)
+echo "$OUT" | grep -q 'Number is between 0 and 99' || fail "in-round help: reminder missing"
+echo "$OUT" | grep -q 'guesses left' || fail "in-round help: reminder missing the guess count"
+echo "$OUT" | grep -q 'Correct! You have guessed the number.' || fail "in-round help: help/? consumed a guess"
+! echo "$OUT" | grep -q 'Invalid number' || fail "in-round help: help/? rejected as invalid input"
+
+step "Smoke: in-round q/quit/exit ends the session cleanly (issue #24)"
+# Issue #17 — quit exits 2 (the same code as an abort) by design.
+OUT=$(printf 'q\n' | mono "$GAME_BIN" 5 1)
+code=$?
+echo "$OUT" | grep -q 'Goodbye!' || fail "in-round quit: no goodbye line"
+! echo "$OUT" | grep -q 'Invalid number' || fail "in-round quit: q rejected as invalid input"
+! echo "$OUT" | grep -q 'ran out of guesses' || fail "in-round quit: counted as a loss"
+[ "$code" -eq 2 ] || fail "in-round quit: want exit 2, got $code"
+
 step "ALL GREEN"
 printf 'Local runner finished: all checks passed.\n'
 exit 0

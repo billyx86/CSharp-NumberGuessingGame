@@ -64,7 +64,9 @@ namespace BasicGuessingGame
                 lastOutcome = engine.PlayRound();
                 if (lastOutcome == RoundOutcome.AbortedByInput)
                 {
-                    // EOF ends the session; the engine already said goodbye.
+                    // An abort — EOF, or the in-round quit key q/quit/exit
+                    // (issue #24) — ends the session; the engine already said
+                    // goodbye, and it maps to session exit code 2.
                     playAgain = false;
                     continue;
                 }

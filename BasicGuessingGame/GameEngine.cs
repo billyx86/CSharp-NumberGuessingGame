@@ -192,7 +192,14 @@ namespace BasicGuessingGame
             "\n" +
             "  Any of the help flags -h, --help, ?, /?, /help, -help, help\n" +
             "  (long forms are case-insensitive) prints this usage and\n" +
-            "  exits 3 without starting a round.";
+            "  exits 3 without starting a round.\n" +
+            "\n" +
+            "In a round, at the guess prompt:\n" +
+            "  'help' or '?' re-prints a short reminder (range, guesses left,\n" +
+            "               these keys) without using a guess (issue #23).\n" +
+            "  'q', 'quit' or 'exit' end the session cleanly - it does not\n" +
+            "               count as a guess, and the process exits 2\n" +
+            "               (the same code as an EOF abort) (issue #24).";
 
         /// <summary>
         /// True for the help flags: -h, --help and ? (issue #16), plus the
@@ -365,6 +372,19 @@ namespace BasicGuessingGame
             return result;
         }
 
+        /// <summary>
+        /// The in-round reminder printed for `help` / `?` at the guess
+        /// prompt (issue #23). One line, rebuilt from the live round state so
+        /// the range and the remaining guesses are always current.
+        /// </summary>
+        private string BuildInRoundHelp(int attemptsUsed)
+        {
+            int guessesLeft = MaxGuesses - attemptsUsed;
+            return "Number is between " + MinGuess + " and " + MaxGuess +
+                " - " + guessesLeft + " guess" + (guessesLeft == 1 ? "" : "es") +
+                " left. Type a whole number to guess; 'help' or '?' for this reminder; 'q' to quit (does not count as a guess).";
+        }
+
         /// <summary>Plays one full round and returns how it ended.</summary>
         public RoundOutcome PlayRound()
         {
@@ -398,6 +418,20 @@ namespace BasicGuessingGame
                 {
                     output.WriteLine("Input closed. Goodbye!");
                     return RoundOutcome.AbortedByInput;
+                }
+
+                string command = line.Trim().ToLowerInvariant();
+
+                if (command == "q" || command == "quit" || command == "exit") // In-round quit (issue #24): clean typed exit, not a guess.
+                {
+                    output.WriteLine("Goodbye!");
+                    return RoundOutcome.AbortedByInput;                    // Program maps this to session exit code 2 (documented).
+                }
+
+                if (command == "help" || command == "?")                     // In-round reminder (issue #23): does not consume a guess.
+                {
+                    output.WriteLine(BuildInRoundHelp(attemptsUsed));
+                    continue;                                               // Ask again without counting it against the limit.
                 }
 
                 if (int.TryParse(line, out int guess) == false)             // Not a whole number...
